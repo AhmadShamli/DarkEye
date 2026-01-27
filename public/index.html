@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DarkEye Recorder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style type="text/tailwindcss">
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #4b5563;
+            border-radius: 20px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background-color: #6b7280;
+        }
+
+        @layer components {
+            .btn-primary {
+                @apply bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-purple-900/40 hover:shadow-purple-700/50 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2;
+            }
+
+            .btn-secondary {
+                @apply bg-gray-800 text-gray-300 font-semibold py-2.5 px-6 rounded-xl border border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-600 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2;
+            }
+
+            .input-field {
+                @apply w-full bg-gray-900/50 border border-gray-700 text-gray-200 text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block p-2.5 placeholder-gray-500 transition-all duration-200 outline-none focus:bg-gray-900/80;
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in-down {
+            animation: fadeInDown 0.6s ease-out;
+        }
+
+        .animate-fade-in-up {
+            animation: fadeInUp 0.6s ease-out 0.2s backwards;
+        }
+
+        /* Modal Open State */
+        .modal-open {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+        .modal-open .modal-content {
+            transform: scale(100%) !important;
+        }
+
+        /* Glass Card */
+        .glass-card {
+            background: rgba(31, 41, 55, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glass-card:hover {
+            background: rgba(31, 41, 55, 0.6);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-['Outfit'] antialiased selection:bg-purple-500 selection:text-white">
+
+    <!-- Background Gradients -->
+    <div class="fixed inset-0 min-h-screen -z-10 bg-gradient-to-br from-gray-900 via-gray-900 to-black"></div>
+    <div class="fixed top-0 left-0 w-full h-full -z-10 opacity-30 pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600 rounded-full blur-[120px] mix-blend-screen animate-pulse"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600 rounded-full blur-[120px] mix-blend-screen animate-pulse" style="animation-delay: 2s;"></div>
+    </div>
+
+    <!-- App Container -->
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-12 animate-fade-in-down">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                    <i class="fa-solid fa-eye text-xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">DarkEye</h1>
+            </div>
+            
+            <div class="flex gap-4">
+                <button onclick="openSettings()" class="btn-secondary group">
+                    <i class="fa-solid fa-gear group-hover:rotate-90 transition-transform duration-500"></i>
+                    <span>Settings</span>
+                </button>
+                <button onclick="openAddCamera()" class="btn-primary">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Add Camera</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats / Overview (Optional, can add later) -->
+
+        <!-- Camera Grid -->
+        <div id="cameraGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">
+            <!-- Camera Cards will be injected here -->
+            <div class="col-span-full h-64 flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-gray-700/50 rounded-2xl bg-gray-800/10 backdrop-blur-sm">
+                <i class="fa-solid fa-video-slash text-4xl mb-4 opacity-50"></i>
+                <p>No cameras configured. Click "Add Camera" to start.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Add Camera Modal -->
+    <div id="addCameraModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300">
+        <div class="bg-gray-800/90 border border-gray-700 w-full max-w-2xl rounded-2xl shadow-2xl transform scale-95 transition-all duration-300 modal-content overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-gray-700 flex justify-between items-center bg-gray-800/50 flex-shrink-0">
+                <h2 class="text-xl font-bold" id="modalTitle">Add Camera</h2>
+                <button onclick="closeModal('addCameraModal')" class="text-gray-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto custom-scrollbar">
+                <!-- Tabs -->
+                <div class="flex gap-4 mb-6 border-b border-gray-700 pb-2">
+                    <button id="tabManual" class="pb-2 border-b-2 border-purple-500 text-purple-400 font-medium transition-colors" onclick="switchTab('manual')">Manual Setup</button>
+                    <button id="tabDiscovery" class="pb-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-colors" onclick="switchTab('discovery')">Auto Discovery</button>
+                </div>
+
+                <!-- Manual Form -->
+                <form id="cameraForm" onsubmit="handleSaveCamera(event)" class="space-y-4 tab-content block">
+                    <input type="hidden" id="editCameraId" name="id">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Name</label>
+                            <input type="text" name="name" required class="input-field" placeholder="e.g. Front Door">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Type</label>
+                            <select name="type" class="input-field" onchange="toggleFields()">
+                                <option value="rtsp">RTSP Stream</option>
+                                <option value="onvif">ONVIF Device</option>
+                                <option value="usb">USB/Local Device</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- ONVIF XAddr (Only for ONVIF) -->
+                    <div id="fieldOnvifUrl" class="space-y-1">
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">ONVIF Service URL (XAddr)</label>
+                        <div class="flex gap-2">
+                            <input type="text" name="onvif_service_url" id="onvifUrl" class="input-field" placeholder="http://192.168.1.100:80/onvif/device_service">
+                            <button type="button" id="btnGetStreams" class="btn-secondary whitespace-nowrap" onclick="fetchOnvifStreams()">
+                                <i class="fa-solid fa-link"></i> Get Streams
+                            </button>
+                        </div>
+                        
+                        <!-- Stream Selection Area -->
+                        <div id="streamList" class="hidden mt-2 bg-gray-900 border border-gray-700 rounded-lg p-2 max-h-40 overflow-y-auto custom-scrollbar">
+                            <div class="text-xs text-center text-gray-500">Fetching profiles...</div>
+                        </div>
+                    </div>
+
+                    <!-- Record Stream -->
+                    <div class="space-y-1">
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Record Stream URL (Main)</label>
+                        <input type="text" name="url" id="recordUrl" required class="input-field" placeholder="rtsp://...">
+                        <p class="text-[10px] text-gray-500">This stream will be recorded.</p>
+                    </div>
+
+                    <!-- Live Stream -->
+                    <div class="space-y-1">
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Live Stream URL (Sub)</label>
+                        <input type="text" name="substream_url" id="liveUrl" class="input-field" placeholder="rtsp://...">
+                        <p class="text-[10px] text-gray-500">Optional. Lower resolution for live view.</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Username</label>
+                            <input type="text" name="username" class="input-field">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Password</label>
+                            <div class="relative">
+                                <input type="password" name="password" id="camPassword" class="input-field pr-10">
+                                <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                                    <i class="fa-solid fa-eye" id="btnShowPass"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                         <div class="space-y-1">
+                            <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Record Mode</label>
+                            <select name="record_mode" class="input-field" onchange="toggleFields()">
+                                <option value="raw">Raw (Passthrough)</option>
+                                <option value="encode">Transcode (H.264)</option>
+                                <option value="none">Disabled (Live Only)</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1" id="fieldSegment">
+                            <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Split File Every (Mins)</label>
+                            <input type="number" name="segment_duration" class="input-field" value="15" min="1">
+                        </div>
+                    </div>
+                    
+                    <div class="pt-6 border-t border-gray-700 mt-4">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" name="timelapse_enabled" id="timelapse" class="w-5 h-5 rounded bg-gray-700 border-gray-600 text-purple-600 focus:ring-purple-500 focus:ring-offset-gray-900" onchange="toggleFields()">
+                            <label for="timelapse" class="text-sm font-medium text-gray-300">Enable Timelapse</label>
+                        </div>
+
+                        <div id="timelapseSettings" class="grid grid-cols-2 gap-4 mt-4 hidden pl-8 border-l-2 border-purple-500/30">
+                            <div class="space-y-1">
+                                <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Frame Interval (Sec)</label>
+                                <input type="number" name="timelapse_interval" class="input-field" value="5" min="1" placeholder="e.g. 5">
+                                <p class="text-[10px] text-gray-500">Capture 1 frame every X seconds.</p>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">File Duration (Mins)</label>
+                                <input type="number" name="timelapse_duration" class="input-field" value="60" min="1" placeholder="e.g. 60">
+                                <p class="text-[10px] text-gray-500">Create new file every X minutes.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="pt-4 flex justify-end">
+                        <button type="submit" class="btn-primary w-full md:w-auto">Save Camera</button>
+                    </div>
+                </form>
+
+                <!-- Discovery View -->
+                <div id="discoveryView" class="tab-content hidden space-y-4">
+                    <button onclick="runDiscovery()" class="btn-secondary w-full flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-radar"></i> Scan Network
+                    </button>
+                    <div id="discoveryResults" class="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        <!-- Results injected here -->
+                        <div class="text-center text-gray-500 py-8">Click Scan to find ONVIF devices</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300">
+        <div class="bg-gray-800/90 border border-gray-700 w-full max-w-md rounded-2xl shadow-2xl transform scale-95 transition-all duration-300 modal-content">
+            <div class="p-6 border-b border-gray-700 flex justify-between items-center bg-gray-800/50">
+                <h2 class="text-xl font-bold">System Settings</h2>
+                <button onclick="closeModal('settingsModal')" class="text-gray-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6">
+                <form onsubmit="handleSaveSettings(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Storage Path</label>
+                        <div class="flex gap-2">
+                            <input type="text" name="storage_path" id="set_storage_path" class="input-field" placeholder="Absolute path (e.g. D:\CCTV)">
+                            <button type="button" onclick="checkStoragePath()" class="btn-secondary whitespace-nowrap">Check</button>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Max Storage (GB)</label>
+                        <input type="number" name="max_storage_gb" id="set_max_storage" class="input-field">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Retention (Hours)</label>
+                        <input type="number" name="retention_hours" id="set_retention" class="input-field">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Cleanup Interval (Mins)</label>
+                        <input type="number" name="cleanup_interval_min" id="set_cleanup" class="input-field">
+                    </div>
+                    <div class="pt-4">
+                        <button type="submit" class="btn-primary w-full">Save Settings</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Files Modal -->
+    <div id="filesModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300">
+        <div class="bg-gray-800/90 border border-gray-700 w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl transform scale-95 transition-all duration-300 modal-content flex flex-col">
+            <div class="p-6 border-b border-gray-700 flex justify-between items-center bg-gray-800/50">
+                <h2 class="text-xl font-bold" id="filesModalTitle">Recordings</h2>
+                <button onclick="closeModal('filesModal')" class="text-gray-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="flex-1 overflow-hidden flex flex-col md:flex-row">
+                <!-- File List -->
+                <div class="w-full md:w-1/3 bg-gray-900/50 border-r border-gray-700 overflow-y-auto custom-scrollbar p-2" id="fileList">
+                    <!-- Files injected here -->
+                </div>
+                <!-- Player -->
+                <div class="w-full md:w-2/3 bg-black flex items-center justify-center p-4">
+                     <video id="videoPlayer" controls class="max-w-full max-h-full rounded-lg shadow-lg"></video>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live View Modal -->
+    <div id="liveModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300">
+        <div class="w-full max-w-6xl aspect-video bg-black rounded-2xl shadow-2xl relative transform scale-95 transition-all duration-300 modal-content overflow-hidden">
+             <button onclick="closeModal('liveModal')" class="absolute top-4 right-4 z-20 text-white/50 hover:text-white bg-black/50 hover:bg-black/80 rounded-full p-2 w-10 h-10 flex items-center justify-center transition-all"><i class="fa-solid fa-xmark text-xl"></i></button>
+             
+             <video id="livePlayer" class="w-full h-full object-contain" controls autoplay></video>
+             
+             <div class="absolute top-4 left-4 z-10 bg-red-600 text-white px-3 py-1 rounded text-xs font-bold animate-pulse flex items-center gap-2">
+                 <div class="w-2 h-2 bg-white rounded-full"></div> LIVE
+             </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
