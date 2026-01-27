@@ -45,23 +45,52 @@ webrtcICEHostNAT1To1IPs: [127.0.0.1]
 paths:
 `;
         
+        const ffmpegManager = require('./ffmpeg-manager');
+        const ffmpegPath = ffmpegManager.getPath() || 'ffmpeg';
+
         if (cameras.length === 0) {
             config += `  all:\n    runOnDemand: no\n`;
         } else {
              cameras.forEach(cam => {
                 let source = cam.url;
-                // Add credentials if needed
-                if (cam.username && cam.password && source.startsWith('rtsp://') && !source.includes('@')) {
-                     const parts = source.split('://');
-                     source = `${parts[0]}://${encodeURIComponent(cam.username)}:${encodeURIComponent(cam.password)}@${parts[1]}`;
+                let runOnInit = '';
+                
+                // USB / Local Device Handling
+                if (cam.type === 'usb') {
+                    source = 'publisher';
+                    const targetRtsp = `rtsp://127.0.0.1:8554/live/${cam.id}`;
+                    
+                    // Construct FFmpeg command to push to MediaMTX
+                    // Note: We use -rtsp_transport tcp for reliability
+                    if (process.platform === 'win32') {
+                        // Windows (dshow)
+                        // Assuming cam.url is the device name e.g. "Integrated Camera"
+                        runOnInit = `${ffmpegPath} -f dshow -i video="${cam.url}" -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2M -f rtsp -rtsp_transport tcp ${targetRtsp}`;
+                    } else {
+                        // Linux (v4l2)
+                        // Assuming cam.url is path e.g. "/dev/video0"
+                        runOnInit = `${ffmpegPath} -f v4l2 -i ${cam.url} -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2M -f rtsp -rtsp_transport tcp ${targetRtsp}`;
+                    }
+                } 
+                // RTSP / Network handling
+                else {
+                    // Add credentials if needed
+                    if (cam.username && cam.password && source.startsWith('rtsp://') && !source.includes('@')) {
+                         const parts = source.split('://');
+                         source = `${parts[0]}://${encodeURIComponent(cam.username)}:${encodeURIComponent(cam.password)}@${parts[1]}`;
+                    }
                 }
 
                 config += `
   live/${cam.id}:
     source: ${source}
-    sourceOnDemand: yes
+    sourceOnDemand: ${cam.type === 'usb' ? 'no' : 'yes'}
     sourceProtocol: tcp
 `;
+                if (runOnInit) {
+                    config += `    runOnInit: ${runOnInit}\n`;
+                    config += `    runOnInitRestart: yes\n`;
+                }
              });
         }
 

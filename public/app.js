@@ -309,11 +309,30 @@ function fillFormFromDiscovery(url, name) {
 function toggleFields() {
     const type = document.querySelector('[name="type"]').value;
     const onvifField = document.getElementById('fieldOnvifUrl');
+    const lblUrl = document.getElementById('lblUrl');
+    const helpUrl = document.getElementById('helpUrl');
+    const usbHelp = document.getElementById('usbHelp');
+    const fieldSubstream = document.getElementById('fieldSubstream');
     
     if (type === 'onvif') {
         onvifField.classList.remove('hidden');
+        lblUrl.innerText = 'Record Stream URL (Main)';
+        usbHelp.classList.add('hidden');
+        fieldSubstream.classList.remove('hidden');
+    } else if (type === 'usb') {
+        onvifField.classList.add('hidden');
+        lblUrl.innerText = 'Device Name / Path';
+        helpUrl.innerText = 'Enter exact device name (Windows) or path (Linux).';
+        document.getElementById('recordUrl').placeholder = 'e.g. Integrated Camera or /dev/video0';
+        usbHelp.classList.remove('hidden');
+        fieldSubstream.classList.add('hidden'); // USB usually has one stream
     } else {
         onvifField.classList.add('hidden');
+        lblUrl.innerText = 'Record Stream URL (Main)';
+        helpUrl.innerText = 'This stream will be recorded.';
+        document.getElementById('recordUrl').placeholder = 'rtsp://...';
+        usbHelp.classList.add('hidden');
+        fieldSubstream.classList.remove('hidden');
     }
 
     // Timelapse Logic

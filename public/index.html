@@ -177,13 +177,22 @@
 
                     <!-- Record Stream -->
                     <div class="space-y-1">
-                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Record Stream URL (Main)</label>
+                        <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold" id="lblUrl">Record Stream URL (Main)</label>
                         <input type="text" name="url" id="recordUrl" required class="input-field" placeholder="rtsp://...">
-                        <p class="text-[10px] text-gray-500">This stream will be recorded.</p>
+                        <p class="text-[10px] text-gray-500" id="helpUrl">This stream will be recorded.</p>
+                        
+                        <!-- USB Help Box -->
+                        <div id="usbHelp" class="hidden mt-2 p-3 bg-blue-900/20 border border-blue-800 rounded-lg text-xs text-blue-300">
+                             <strong><i class="fa-solid fa-circle-info"></i> How to find Device Name:</strong>
+                             <ul class="list-disc pl-4 mt-1 space-y-1 opacity-80">
+                                 <li><strong>Windows:</strong> <code>ffmpeg -list_devices true -f dshow -i dummy</code> (Use exact name, e.g. "Integrated Camera")</li>
+                                 <li><strong>Linux:</strong> <code>ls /dev/video*</code> (e.g. "/dev/video0")</li>
+                             </ul>
+                        </div>
                     </div>
 
                     <!-- Live Stream -->
-                    <div class="space-y-1">
+                    <div class="space-y-1" id="fieldSubstream">
                         <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Live Stream URL (Sub)</label>
                         <input type="text" name="substream_url" id="liveUrl" class="input-field" placeholder="rtsp://...">
                         <p class="text-[10px] text-gray-500">Optional. Lower resolution for live view.</p>
