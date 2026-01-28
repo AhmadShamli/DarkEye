@@ -51,9 +51,23 @@ function renderCameras() {
         <div class="glass-card rounded-2xl p-4 transition-all duration-300 hover:shadow-purple-900/20 hover:shadow-2xl group relative overflow-hidden">
              <!-- Status Badge -->
             <div class="absolute top-4 right-4 z-10 flex gap-2">
-                <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border border-white/10 ${cam.record_enabled ? 'bg-red-500/20 text-red-500 animate-pulse' : 'bg-gray-700/50 text-gray-400'}">
-                    ${cam.record_enabled ? 'REC' : 'IDLE'}
-                </span>
+                <!-- Main Record Badge -->
+                ${cam.record_mode !== 'none' ? `
+                    <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border border-white/10 bg-red-500/20 text-red-500 animate-pulse">
+                        REC
+                    </span>
+                ` : `
+                    <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border border-white/10 bg-blue-500/20 text-blue-400">
+                        LIVE
+                    </span>
+                `}
+                
+                <!-- Timelapse Badge -->
+                ${cam.timelapse_enabled ? `
+                    <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border border-white/10 bg-purple-500/20 text-purple-400">
+                        TL
+                    </span>
+                ` : ''}
             </div>
 
             <!-- Thumbnail / Preview -->
