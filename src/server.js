@@ -154,6 +154,7 @@ app.post('/api/cameras/discover', async (req, res) => {
 
         res.json(newDevices);
     } catch (e) {
+        console.error('[Discovery API Error]', e);
         res.status(500).json({ error: e.message });
     }
 });
