@@ -10,6 +10,9 @@ class OnvifManager {
         const interfaces = Object.keys(os.networkInterfaces());
         console.log(`[ONVIF] Starting discovery on interfaces: ${interfaces.join(', ')}`);
         
+        const attempts = 3;
+        const allDevices = new Map(); // xaddr -> device
+
         for (let i = 0; i < attempts; i++) {
             console.log(`[ONVIF] Discovery attempt ${i+1}/${attempts}...`);
             try {
