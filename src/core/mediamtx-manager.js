@@ -62,7 +62,9 @@ paths:
         const ffmpegPath = ffmpegManager.getPath() || 'ffmpeg';
 
         if (cameras.length === 0) {
-            config += `  all:\n    runOnDemand: no\n`;
+            // "all" matches any stream path that isn't explicitly defined.
+            // We just leave it empty or with default settings.
+            config += `  all:\n`;
         } else {
              cameras.forEach(cam => {
                 let source = cam.url;
