@@ -23,6 +23,17 @@ sed -i "s|WorkingDirectory=.*|WorkingDirectory=$INSTALL_DIR|g" $SERVICE_FILE
 sed -i "s|ExecStart=.*|ExecStart=$NPM_PATH start|g" $SERVICE_FILE
 sed -i "s|User=.*|User=$CURRENT_USER|g" $SERVICE_FILE
 
+# Inject PATH to ensure npm can find node (especially for NVM users)
+NODE_BIN_DIR=$(dirname "$NPM_PATH")
+DEFAULT_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+FULL_PATH="$NODE_BIN_DIR:$DEFAULT_PATH"
+
+# Remove any existing PATH definition to avoid duplicates if run multiple times (optional safety)
+sed -i "/Environment=PATH=/d" $SERVICE_FILE
+
+# Insert PATH before other Environment variables
+sed -i "/Environment=NODE_ENV=production/i Environment=PATH=$FULL_PATH" $SERVICE_FILE
+
 echo "  Updated $SERVICE_FILE with current paths."
 
 # Copy to systemd
