@@ -44,19 +44,34 @@ class Recorder {
 
         // --- Main Recording ---
         if (record_mode !== 'none') {
+            const outputArgs = [
+                '-f segment',
+                `-segment_time ${segment_duration ? segment_duration * 60 : 900}`, 
+                '-strftime 1',
+                '-reset_timestamps 1'
+            ];
+
+            if (record_mode === 'encode') {
+                console.log(`[Recorder ${id}] Mode: Encode (H.264/AAC)`);
+                outputArgs.unshift(
+                    '-c:v libx264', 
+                    '-preset superfast', 
+                    '-crf 23',
+                    '-c:a aac', 
+                    '-b:a 128k'
+                );
+            } else {
+                console.log(`[Recorder ${id}] Mode: Raw (Stream Copy)`);
+                outputArgs.unshift('-c copy');
+            }
+
             this.command = ffmpeg(inputUrl)
                 .inputOptions([
                     '-rtsp_transport tcp',
                     '-fflags nobuffer',
                     '-allowed_media_types video+audio'
                 ])
-                .outputOptions([
-                    '-c copy',
-                    '-f segment',
-                    `-segment_time ${segment_duration ? segment_duration * 60 : 900}`, 
-                    '-strftime 1',
-                    '-reset_timestamps 1'
-                ]);
+                .outputOptions(outputArgs);
 
             const outputFile = path.join(recordingPath, '%Y-%m-%d_%H-%M-%S.mkv');
 
