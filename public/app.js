@@ -222,34 +222,104 @@ function openEditCamera(id) {
     openModal('addCameraModal');
 }
 
+// --- Settings & Users ---
 function openSettings() {
     fetchSettings();
+    switchSettingsTab('general');
     openModal('settingsModal');
 }
 
-// --- Forms ---
-async function handleSaveCamera(e) {
+function switchSettingsTab(tab) {
+    document.querySelectorAll('.tab-settings').forEach(el => el.classList.add('hidden'));
+    
+    document.getElementById(tab === 'general' ? 'settingsGeneral' : 'settingsUsers').classList.remove('hidden');
+    
+    const tabGen = document.getElementById('tabGeneral');
+    const tabUsers = document.getElementById('tabUsers');
+    
+    if (tab === 'general') {
+        tabGen.classList.add('border-purple-500', 'text-purple-400');
+        tabGen.classList.remove('border-transparent');
+        tabUsers.classList.remove('border-purple-500', 'text-purple-400');
+        tabUsers.classList.add('border-transparent');
+    } else {
+        tabUsers.classList.add('border-purple-500', 'text-purple-400');
+        tabUsers.classList.remove('border-transparent');
+        tabGen.classList.remove('border-purple-500', 'text-purple-400');
+        tabGen.classList.add('border-transparent');
+        fetchUsers();
+    }
+}
+
+async function fetchUsers() {
+    const list = document.getElementById('userList');
+    list.innerHTML = '<div class="text-center text-gray-500">Loading...</div>';
+    
+    try {
+        const res = await fetch(`${API_URL}/auth/users`);
+        if (!res.ok) {
+            if (res.status === 403) {
+                 list.innerHTML = '<div class="text-center text-red-400">Admin access only.</div>';
+                 return;
+            }
+            throw new Error('Failed');
+        }
+        const users = await res.json();
+        
+        list.innerHTML = users.map(u => `
+            <div class="flex justify-between items-center p-2 bg-gray-800 rounded border border-gray-700">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center font-bold text-xs">
+                        ${u.username[0].toUpperCase()}
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-gray-200">${u.username}</div>
+                        <div class="text-[10px] text-gray-500 uppercase">${u.role}</div>
+                    </div>
+                </div>
+                ${u.role !== 'admin' || (users.filter(x => x.role === 'admin').length > 1) ? `
+                    <button onclick="deleteUser('${u.id}')" class="text-gray-500 hover:text-red-400 transition-colors p-1" title="Delete">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                ` : ''}
+            </div>
+        `).join('');
+    } catch(e) {
+        list.innerHTML = '<div class="text-center text-red-400">Error loading users.</div>';
+    }
+}
+
+async function handleAddUser(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
-    const id = document.getElementById('editCameraId').value;
     
-    // Checkboxes
-    data.timelapse_enabled = formData.get('timelapse_enabled') === 'on';
-
     try {
-        const method = id ? 'PUT' : 'POST';
-        const url = id ? `${API_URL}/cameras/${id}` : `${API_URL}/cameras`;
-
-        await fetch(url, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
+        const res = await fetch(`${API_URL}/auth/users`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
         });
-        closeModal('addCameraModal');
-        fetchCameras();
-    } catch(err) {
-        alert('Error saving camera');
+        
+        if (res.ok) {
+            e.target.reset();
+            fetchUsers();
+        } else {
+            const err = await res.json();
+            alert(err.error);
+        }
+    } catch(e) {
+        alert('Failed to add user');
+    }
+}
+
+async function deleteUser(id) {
+    if (!confirm('Delete this user?')) return;
+    try {
+        await fetch(`${API_URL}/auth/users/${id}`, { method: 'DELETE' });
+        fetchUsers();
+    } catch(e) {
+        alert('Failed to delete user');
     }
 }
 
