@@ -164,6 +164,132 @@ app.get('/hls/:id/:file', (req, res) => {
 });
 
 // API Routes
+
+// --- Cameras ---
+app.get('/api/cameras', (req, res) => {
+    const cameras = db.prepare('SELECT * FROM cameras').all();
+    const camsWithStatus = cameras.map(c => {
+        const rec = cameraManager.getRecorder(c.id);
+        return { ...c, is_recording: rec ? rec.isRecording : false };
+    });
+    res.json(camsWithStatus);
+});
+
+app.post('/api/cameras', (req, res) => {
+    const { name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url } = req.body;
+    const id = Math.random().toString(36).substring(2, 7).toUpperCase();
+    try {
+        const stmt = db.prepare(`INSERT INTO cameras (id, name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        stmt.run(id, name, type, url, username, password, record_mode || 'raw', timelapse_enabled ? 1 : 0, segment_duration || 15, timelapse_interval || 5, timelapse_duration || 60, onvif_service_url, substream_url);
+        const newCam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
+        cameraManager.startCamera(newCam);
+        res.json(newCam);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/cameras/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url } = req.body;
+    try {
+        cameraManager.stopCamera(id);
+        const stmt = db.prepare(`UPDATE cameras SET name=?, type=?, url=?, username=?, password=?, record_mode=?, timelapse_enabled=?, segment_duration=?, timelapse_interval=?, timelapse_duration=?, onvif_service_url=?, substream_url=? WHERE id=?`);
+        stmt.run(name, type, url, username, password, record_mode || 'raw', timelapse_enabled ? 1 : 0, segment_duration || 15, timelapse_interval || 5, timelapse_duration || 60, onvif_service_url, substream_url, id);
+        const updatedCam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
+        if (updatedCam.record_enabled) cameraManager.startCamera(updatedCam);
+        res.json(updatedCam);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/cameras/:id', (req, res) => {
+    const { id } = req.params;
+    cameraManager.stopCamera(id);
+    db.prepare('DELETE FROM cameras WHERE id = ?').run(id);
+    res.json({ success: true });
+});
+
+app.post('/api/cameras/discover', async (req, res) => {
+    try {
+        const devices = await onvifManager.discover();
+        const existingCams = db.prepare('SELECT onvif_service_url FROM cameras').all();
+        const getHost = (urlStr) => { try { return new URL(urlStr.match(/^https?:\/\//) ? urlStr : `http://${urlStr}`).hostname; } catch (e) { return ''; } };
+        const existingHosts = new Set(existingCams.map(c => getHost(c.onvif_service_url)).filter(h => h));
+        const newDevices = devices.map(d => ({ ...d, existing: existingHosts.has(getHost(d.xaddr)) }));
+        res.json(newDevices);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/onvif/profiles', async (req, res) => {
+    const { url, username, password } = req.body;
+    try {
+        const profiles = await onvifManager.getProfiles(url, username, password);
+        res.json(profiles);
+    } catch (e) { res.status(500).json({ error: `Connection failed: ${e.message}` }); }
+});
+
+app.post('/api/cameras/:id/stream-url', async (req, res) => {
+    const { id } = req.params;
+    const cam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
+    if (!cam) return res.status(404).json({error: 'Camera not found'});
+    if (cam.type === 'onvif') {
+        try {
+            const url = await onvifManager.getStreamUrl(cam.url, cam.username, cam.password);
+            db.prepare('UPDATE cameras SET url = ? WHERE id = ?').run(url, id);
+            cameraManager.restartCamera(id);
+            res.json({ url });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    } else { res.json({ url: cam.url }); }
+});
+
+app.post('/api/cameras/:id/live/heartbeat', (req, res) => {
+    const { id } = req.params;
+    const cam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
+    if (!cam) return res.status(404).json({ error: 'Camera not found' });
+    let streamUrl = cam.substream_url || cam.url;
+    if (cam.username && cam.password && streamUrl.startsWith('rtsp://') && !streamUrl.includes('@')) {
+        const parts = streamUrl.split('://');
+        streamUrl = `${parts[0]}://${encodeURIComponent(cam.username)}:${encodeURIComponent(cam.password)}@${parts[1]}`;
+    }
+    require('./core/stream-manager').heartbeat(id, streamUrl);
+    res.json({ success: true });
+});
+
+// --- Settings ---
+app.get('/api/settings', (req, res) => {
+    const settings = db.prepare('SELECT * FROM settings').all();
+    const result = {};
+    settings.forEach(s => result[s.key] = s.value);
+    res.json(result);
+});
+
+app.post('/api/settings', (req, res) => {
+    const { max_storage_gb, retention_hours, cleanup_interval_min, storage_path } = req.body;
+    const update = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    if (max_storage_gb) update.run('max_storage_gb', max_storage_gb.toString());
+    if (retention_hours) update.run('retention_hours', retention_hours.toString());
+    if (cleanup_interval_min) update.run('cleanup_interval_min', cleanup_interval_min.toString());
+    if (storage_path) update.run('storage_path', storage_path.toString());
+    storageManager.stop();
+    storageManager.start();
+    res.json({ success: true });
+});
+
+app.post('/api/settings/check-path', (req, res) => {
+    const { path: checkPath } = req.body;
+    try {
+        if (!fs.existsSync(checkPath)) fs.mkdirSync(checkPath, { recursive: true });
+        const testFile = path.join(checkPath, '.test_write');
+        fs.writeFileSync(testFile, 'ok');
+        fs.unlinkSync(testFile);
+        res.json({ success: true, message: 'Path is valid' });
+    } catch (e) { res.status(400).json({ error: `Invalid path: ${e.message}` }); }
+});
+
+// helper 
+function getStoragePath() {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
+    return row ? row.value : path.join(process.cwd(), 'recordings');
+}
+
 app.get('/api/recordings/:id', (req, res) => {
     // List recordings for a camera
     const { id } = req.params;
@@ -224,7 +350,28 @@ app.get('/recordings/:id/:file', (req, res) => {
 });
 
 app.get('/api/cameras/:id/latest-recording', (req, res) => {
-    // ... existing ...
+    const { id } = req.params;
+    const basePath = getStoragePath();
+    const recPath = path.join(basePath, id);
+    
+    if (fs.existsSync(recPath)) {
+        try {
+            const files = fs.readdirSync(recPath)
+                .filter(f => fs.statSync(path.join(recPath, f)).isFile() && (f.endsWith('.mp4') || f.endsWith('.mkv')))
+                .map(f => ({ name: f, mtime: fs.statSync(path.join(recPath, f)).mtime }))
+                .sort((a, b) => b.mtime - a.mtime);
+                
+            if (files.length > 0) {
+                res.json(files[0]);
+            } else {
+                res.json(null);
+            }
+        } catch(e) {
+            res.status(500).json({ error: e.message });
+        }
+    } else {
+        res.json(null);
+    }
 });
 
 const generatingThumbs = new Set(); // Track active generations
