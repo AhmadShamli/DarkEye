@@ -6,25 +6,35 @@ class OnvifManager {
     }
 
     async discover() {
-        console.log('[ONVIF] Starting discovery...');
-        const attempts = 3;
-        const allDevices = new Map(); // xaddr -> device
-
+        const os = require('os');
+        const interfaces = Object.keys(os.networkInterfaces());
+        console.log(`[ONVIF] Starting discovery on interfaces: ${interfaces.join(', ')}`);
+        
         for (let i = 0; i < attempts; i++) {
             console.log(`[ONVIF] Discovery attempt ${i+1}/${attempts}...`);
             try {
-                const devices = await onvif.startProbe();
+                const devices = await new Promise((resolve, reject) => {
+                    onvif.startProbe().then(device_list => {
+                        resolve(device_list);
+                    }).catch(e => {
+                        reject(e);
+                    });
+                });
+
+                console.log(`[ONVIF] Attempt ${i+1} raw result count: ${devices.length}`);
+
                 devices.forEach(d => {
                     const address = d.xaddr || (Array.isArray(d.xaddrs) ? d.xaddrs[0] : '');
                     if (address && !allDevices.has(address)) {
+                        console.log(`[ONVIF] Found device: ${address}`);
                         allDevices.set(address, d);
                     }
                 });
             } catch (e) {
-                console.warn(`[ONVIF] Attempt ${i+1} failed:`, e.message);
+                console.error(`[ONVIF] Attempt ${i+1} failed details:`, e);
             }
             // Small pause between attempts
-            if (i < attempts - 1) await new Promise(r => setTimeout(r, 1000));
+            if (i < attempts - 1) await new Promise(r => setTimeout(r, 2000));
         }
 
         console.log(`[ONVIF] Found ${allDevices.size} unique devices after ${attempts} attempts.`);
