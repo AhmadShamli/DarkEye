@@ -1,0 +1,21 @@
+[Unit]
+Description=DarkEye CCTV Recorder
+After=network.target
+
+[Service]
+# Change this to your user if not running as root
+User=root
+# Change this to your installation directory
+WorkingDirectory=/root/github/DarkEye
+# Path to npm or node (run 'which npm' to verify)
+ExecStart=/usr/bin/npm start
+# Environment variables if needed
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# Auto-restart config
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

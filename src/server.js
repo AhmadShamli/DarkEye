@@ -17,9 +17,88 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(process.cwd(), 'public')));
 app.use('/hls', express.static(path.join(process.cwd(), 'public', 'hls')));
-app.use('/recordings', express.static(path.join(process.cwd(), 'recordings')));
+app.use('/hls', express.static(path.join(process.cwd(), 'public', 'hls')));
+app.use('/recordings', express.static(path.join(process.cwd(), 'public', 'recordings')));
 
-// Initialize Systems
+// Auth Dependencies
+const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
+const { authMiddleware, generateToken } = require('./middleware/auth');
+
+app.use(cookieParser());
+
+// --- Authentication Routes ---
+
+// Setup (First Run Only)
+app.post('/api/auth/setup', async (req, res) => {
+    const { username, password } = req.body;
+    
+    // Check if any user exists
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    if (userCount > 0) {
+        return res.status(403).json({ error: 'Setup already completed. Please login.' });
+    }
+
+    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const id = uuidv4();
+
+    db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, username, hashedPassword, 'admin');
+    
+    // Auto login
+    const token = generateToken({ id, username, role: 'admin' });
+    res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 3600000 });
+    res.json({ success: true, message: 'Admin created' });
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = generateToken(user);
+    res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 3600000 });
+    res.json({ success: true });
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+    res.clearCookie('token');
+    res.json({ success: true });
+});
+
+// Check Auth Status (for frontend)
+app.get('/api/auth/status', (req, res) => {
+    const token = req.cookies.token;
+    if (!token) return res.json({ authenticated: false });
+    try {
+        const { verify } = require('jsonwebtoken'); // Lazy load to ensure secret is same
+        const { SECRET_KEY } = require('./middleware/auth');
+        const decoded = verify(token, SECRET_KEY);
+        // Check if DB is empty (Setup Mode)
+        const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+        res.json({ authenticated: true, user: decoded, setupRequired: userCount === 0 });
+    } catch(e) {
+        const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+        res.json({ authenticated: false, setupRequired: userCount === 0 });
+    }
+});
+
+// Middleware to protect API routes (Apply to /api/cameras, /api/settings, etc)
+// We applied it globally to /api/* EXCEPT auth routes
+app.use('/api', (req, res, next) => {
+    // Allow Auth routes
+    if (req.path.startsWith('/auth')) return next();
+    
+    // Apply Auth Middleware
+    authMiddleware(req, res, next);
+});
+
 (async () => {
     try {
         const mediamtx = require('./core/mediamtx-manager');

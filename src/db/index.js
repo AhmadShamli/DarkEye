@@ -34,6 +34,14 @@ db.exec(`
         substream_url TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        password_hash TEXT,
+        role TEXT DEFAULT 'user', -- 'admin', 'user'
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 `);
 
 // Migrations (Legacy/Cleanup)

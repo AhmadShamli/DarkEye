@@ -63,6 +63,39 @@ DarkEye uses a **Split-Process Architecture** for maximum stability:
     *   **Raw**: Direct copy (Low CPU).
     *   **Encode**: Re-encode to H.264 (High CPU).
     *   **Disabled**: Live View only.
+    
+## 🚀 Deployment / Auto-Start
+
+### Linux (Systemd) - Recommended for Linux Servers
+We include a helper script to automatically install DarkEye as a system service.
+
+1.  Grant executable permission:
+    ```bash
+    chmod +x install_service.sh
+    ```
+2.  Run the installer (requires sudo):
+    ```bash
+    ./install_service.sh
+    ```
+    This will create `/etc/systemd/system/darkeye.service` and enable it on boot.
+
+### Windows (PM2)
+For Windows, we recommend using **PM2** to manage the process.
+
+1.  Install PM2 globally:
+    ```powershell
+    npm install pm2 -g
+    npm install pm2-windows-startup -g
+    ```
+2.  Setup Startup Script:
+    ```powershell
+    pm2-startup install
+    ```
+3.  Start DarkEye and Save:
+    ```powershell
+    pm2 start src/server.js --name darkeye
+    pm2 save
+    ```
 
 ## 📂 File Structure
 ```

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DarkEye - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <style>
+        body { font-family: 'Outfit', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center relative overflow-hidden">
+
+    <!-- Background Effects -->
+    <div class="absolute inset-0 -z-10 bg-gradient-to-br from-gray-900 via-gray-900 to-black"></div>
+    <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600 rounded-full blur-[120px] mix-blend-screen opacity-20"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600 rounded-full blur-[120px] mix-blend-screen opacity-20"></div>
+
+    <div class="w-full max-w-md p-8 bg-gray-800/50 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl">
+        
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 mx-auto bg-gradient-to-tr from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/30 mb-4">
+                <i class="fa-solid fa-eye text-3xl text-white"></i>
+            </div>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">DarkEye</h1>
+            <p class="text-gray-400 mt-2 text-sm" id="subTitle">Please sign in to continue</p>
+        </div>
+
+        <!-- Login Form -->
+        <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-5 hidden">
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Username</label>
+                <input type="text" name="username" class="w-full bg-gray-900/50 border border-gray-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all placeholder-gray-600" placeholder="Enter username" required>
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Password</label>
+                <div class="relative">
+                    <input type="password" name="password" class="w-full bg-gray-900/50 border border-gray-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all placeholder-gray-600" placeholder="••••••••" required>
+                </div>
+            </div>
+            <button type="submit" class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-purple-900/40 transform hover:-translate-y-0.5 transition-all duration-200">
+                Sign In
+            </button>
+        </form>
+
+        <!-- Setup Form -->
+        <form id="setupForm" onsubmit="handleSetup(event)" class="space-y-5 hidden">
+            <div class="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-4">
+                <div class="flex items-center gap-3 text-blue-400 mb-1">
+                    <i class="fa-solid fa-sparkles"></i>
+                    <span class="font-bold">Welcome!</span>
+                </div>
+                <p class="text-xs text-blue-300/80">This is your first time running DarkEye. Please create an administrator account.</p>
+            </div>
+
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Create Username</label>
+                <input type="text" name="username" value="admin" class="w-full bg-gray-900/50 border border-gray-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" required>
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Create Password</label>
+                <input type="password" name="password" class="w-full bg-gray-900/50 border border-gray-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" required>
+            </div>
+            <button type="submit" class="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-900/40 transform hover:-translate-y-0.5 transition-all duration-200">
+                Create Admin Account
+            </button>
+        </form>
+
+        <p id="errorMsg" class="mt-4 text-center text-red-500 text-sm hidden"></p>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+
+        // Check status on load
+        (async () => {
+            try {
+                const res = await fetch(`${API_URL}/auth/status`);
+                const status = await res.json();
+                
+                if (status.authenticated) {
+                    window.location.href = '/';
+                } else if (status.setupRequired) {
+                    document.getElementById('setupForm').classList.remove('hidden');
+                    document.getElementById('subTitle').innerText = 'System Setup';
+                } else {
+                    document.getElementById('loginForm').classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error("Auth check failed", e);
+                // Fallback to login
+                document.getElementById('loginForm').classList.remove('hidden');
+            }
+        })();
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            showError('');
+
+            try {
+                const res = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                if (res.ok) {
+                    window.location.href = '/';
+                } else {
+                    const err = await res.json();
+                    showError(err.error || 'Login failed');
+                }
+            } catch (e) {
+                showError('Network error');
+            }
+        }
+
+        async function handleSetup(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            showError('');
+
+            try {
+                const res = await fetch(`${API_URL}/auth/setup`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                if (res.ok) {
+                    window.location.href = '/';
+                } else {
+                    const err = await res.json();
+                    showError(err.error || 'Setup failed');
+                }
+            } catch (e) {
+                showError('Network error');
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            if (msg) {
+                el.innerText = msg;
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

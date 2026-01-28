@@ -4,9 +4,33 @@ const API_URL = '/api';
 let cameras = [];
 
 // --- Init ---
-document.addEventListener('DOMContentLoaded', () => {
-    fetchCameras();
+document.addEventListener('DOMContentLoaded', async () => {
+    if (await checkAuth()) {
+        fetchCameras();
+    }
 });
+
+// --- Auth ---
+async function checkAuth() {
+    try {
+        const res = await fetch(`${API_URL}/auth/status`);
+        const status = await res.json();
+        
+        if (!status.authenticated) {
+            window.location.href = '/login.html';
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error("Auth check failed", e);
+        return false;
+    }
+}
+
+async function logout() {
+    await fetch(`${API_URL}/auth/logout`, { method: 'POST' });
+    window.location.href = '/login.html';
+}
 
 // --- API Calls ---
 async function fetchCameras() {
