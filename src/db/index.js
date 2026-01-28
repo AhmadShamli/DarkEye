@@ -34,6 +34,8 @@ db.exec(`
 // Migrations (Safe column additions)
 try { db.exec("ALTER TABLE cameras ADD COLUMN timelapse_interval INTEGER DEFAULT 5"); } catch (e) {}
 try { db.exec("ALTER TABLE cameras ADD COLUMN timelapse_duration INTEGER DEFAULT 60"); } catch (e) {}
+try { db.exec("ALTER TABLE cameras ADD COLUMN onvif_service_url TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE cameras ADD COLUMN substream_url TEXT"); } catch (e) {}
 
 // Seed default settings if not exist
 const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
