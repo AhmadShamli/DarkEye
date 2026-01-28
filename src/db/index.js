@@ -25,17 +25,19 @@ db.exec(`
         password TEXT,
         status TEXT, -- 'online', 'offline'
         record_enabled INTEGER DEFAULT 1,
-        record_mode TEXT DEFAULT 'raw', -- 'raw', 'encode'
+        record_mode TEXT DEFAULT 'raw', -- 'raw', 'encode', 'none'
+        segment_duration INTEGER DEFAULT 15,
         timelapse_enabled INTEGER DEFAULT 0,
+        timelapse_interval INTEGER DEFAULT 5,
+        timelapse_duration INTEGER DEFAULT 60,
+        onvif_service_url TEXT,
+        substream_url TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 `);
 
-// Migrations (Safe column additions)
-try { db.exec("ALTER TABLE cameras ADD COLUMN timelapse_interval INTEGER DEFAULT 5"); } catch (e) {}
-try { db.exec("ALTER TABLE cameras ADD COLUMN timelapse_duration INTEGER DEFAULT 60"); } catch (e) {}
-try { db.exec("ALTER TABLE cameras ADD COLUMN onvif_service_url TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE cameras ADD COLUMN substream_url TEXT"); } catch (e) {}
+// Migrations (Legacy/Cleanup)
+// Flattened into main table definition above.
 
 // Seed default settings if not exist
 const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
