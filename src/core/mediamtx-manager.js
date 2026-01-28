@@ -9,9 +9,22 @@ const MEDIAMTX_PATH = path.join(BIN_DIR, process.platform === 'win32' ? 'mediamt
 const CONFIG_PATH = path.join(BIN_DIR, 'mediamtx.yml');
 
 // Release URL (pinned v1.9.3 for stability)
-const DOWNLOAD_URL = process.platform === 'win32' 
-    ? 'https://github.com/bluenviron/mediamtx/releases/download/v1.9.3/mediamtx_v1.9.3_windows_amd64.zip'
-    : 'https://github.com/bluenviron/mediamtx/releases/download/v1.9.3/mediamtx_v1.9.3_linux_amd64.tar.gz';
+const getDownloadUrl = () => {
+    if (process.platform === 'win32') {
+        return 'https://github.com/bluenviron/mediamtx/releases/download/v1.9.3/mediamtx_v1.9.3_windows_amd64.zip';
+    }
+    if (process.platform === 'linux') {
+        if (process.arch === 'arm64') {
+            return 'https://github.com/bluenviron/mediamtx/releases/download/v1.9.3/mediamtx_v1.9.3_linux_arm64v8.tar.gz';
+        }
+        if (process.arch === 'arm') { 
+            return 'https://github.com/bluenviron/mediamtx/releases/download/v1.9.3/mediamtx_v1.9.3_linux_armv7.tar.gz';
+        }
+        return 'https://github.com/bluenviron/mediamtx/releases/download/v1.9.3/mediamtx_v1.9.3_linux_amd64.tar.gz';
+    }
+    throw new Error(`Unsupported platform: ${process.platform} / ${process.arch}`);
+};
+const DOWNLOAD_URL = getDownloadUrl();
 
 class MediaMTXManager {
     constructor() {
