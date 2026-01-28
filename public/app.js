@@ -222,6 +222,32 @@ function openEditCamera(id) {
     openModal('addCameraModal');
 }
 
+// --- Forms ---
+async function handleSaveCamera(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+    const id = document.getElementById('editCameraId').value;
+    
+    // Checkboxes
+    data.timelapse_enabled = formData.get('timelapse_enabled') === 'on';
+
+    try {
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `${API_URL}/cameras/${id}` : `${API_URL}/cameras`;
+
+        await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        closeModal('addCameraModal');
+        fetchCameras();
+    } catch(err) {
+        alert('Error saving camera');
+    }
+}
+
 // --- Settings & Users ---
 function openSettings() {
     fetchSettings();
