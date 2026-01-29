@@ -162,6 +162,83 @@ class OnvifManager {
             throw e;
         }
     }
+
+    /**
+     * Move the PTZ camera continuously in a direction
+     * @param {string} address - ONVIF service URL (xaddr)
+     * @param {string} username - Camera username
+     * @param {string} password - Camera password
+     * @param {object} velocity - { x, y, z } values from -1 to 1
+     */
+    async move(address, username, password, velocity) {
+        try {
+            const device = new onvif.OnvifDevice({
+                xaddr: address,
+                user: username,
+                pass: password
+            });
+
+            await device.init();
+
+            // Check if PTZ service is available
+            if (!device.services.ptz) {
+                throw new Error('PTZ service not available on this device');
+            }
+
+            // Get the first profile token for PTZ
+            const profileToken = Object.keys(device.profiles)[0];
+            if (!profileToken) {
+                throw new Error('No media profile found');
+            }
+
+            // Use node-onvif's ptzMove method for continuous movement
+            // velocity: { x: pan speed, y: tilt speed, z: zoom speed } - range -1 to 1
+            const params = {
+                speed: {
+                    x: velocity.x || 0,
+                    y: velocity.y || 0,
+                    z: velocity.z || 0
+                },
+                timeout: 1 // Timeout in seconds (optional)
+            };
+
+            await device.ptzMove(params);
+            console.log(`[ONVIF] PTZ move executed: pan=${velocity.x}, tilt=${velocity.y}, zoom=${velocity.z}`);
+        } catch (e) {
+            console.error(`[ONVIF] PTZ move failed for ${address}:`, e.message);
+            throw e;
+        }
+    }
+
+    /**
+     * Stop PTZ camera movement
+     * @param {string} address - ONVIF service URL (xaddr)
+     * @param {string} username - Camera username
+     * @param {string} password - Camera password
+     */
+    async stop(address, username, password) {
+        try {
+            const device = new onvif.OnvifDevice({
+                xaddr: address,
+                user: username,
+                pass: password
+            });
+
+            await device.init();
+
+            // Check if PTZ service is available
+            if (!device.services.ptz) {
+                throw new Error('PTZ service not available on this device');
+            }
+
+            // Use node-onvif's ptzStop method
+            await device.ptzStop();
+            console.log(`[ONVIF] PTZ stop executed`);
+        } catch (e) {
+            console.error(`[ONVIF] PTZ stop failed for ${address}:`, e.message);
+            throw e;
+        }
+    }
 }
 
 module.exports = new OnvifManager();
