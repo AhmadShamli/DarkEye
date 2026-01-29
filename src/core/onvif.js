@@ -185,21 +185,14 @@ class OnvifManager {
                 throw new Error('PTZ service not available on this device');
             }
 
-            // Get the first profile token for PTZ
-            const profileToken = Object.keys(device.profiles)[0];
-            if (!profileToken) {
-                throw new Error('No media profile found');
-            }
-
             // Use node-onvif's ptzMove method for continuous movement
-            // velocity: { x: pan speed, y: tilt speed, z: zoom speed } - range -1 to 1
+            // Parameters: x (pan), y (tilt), zoom - all range -1 to 1
+            // timeout in milliseconds (omit for indefinite until stop)
             const params = {
-                speed: {
-                    x: velocity.x || 0,
-                    y: velocity.y || 0,
-                    z: velocity.z || 0
-                },
-                timeout: 1 // Timeout in seconds (optional)
+                x: velocity.x || 0,
+                y: velocity.y || 0,
+                zoom: velocity.z || 0,
+                timeout: 1000 // 1 second timeout
             };
 
             await device.ptzMove(params);
