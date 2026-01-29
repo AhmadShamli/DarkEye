@@ -418,6 +418,22 @@ app.get('/api/cameras/:id/thumbnail', (req, res) => {
     }
 });
 
+// --- Debug/Maintenance ---
+app.get('/api/debug/fix-db', (req, res) => {
+    try {
+        const tableInfo = db.prepare("PRAGMA table_info(cameras)").all();
+        const hasPtz = tableInfo.some(c => c.name === 'ptz_enabled');
+        if (!hasPtz) {
+            db.prepare("ALTER TABLE cameras ADD COLUMN ptz_enabled INTEGER DEFAULT 0").run();
+            res.json({ success: true, message: 'Migration successful: Added ptz_enabled column.' });
+        } else {
+            res.json({ success: true, message: 'Database already up to date.' });
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
