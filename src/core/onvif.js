@@ -186,13 +186,14 @@ class OnvifManager {
             }
 
             // Use node-onvif's ptzMove method for continuous movement
-            // Parameters: x (pan), y (tilt), zoom - all range -1 to 1
-            // timeout in milliseconds (omit for indefinite until stop)
+            // API requires: speed: { x, y, z } and timeout in seconds
             const params = {
-                x: velocity.x || 0,
-                y: velocity.y || 0,
-                zoom: velocity.z || 0,
-                timeout: 1000 // 1 second timeout
+                speed: {
+                    x: velocity.x || 0,
+                    y: velocity.y || 0,
+                    z: velocity.z || 0
+                },
+                timeout: 5 // Timeout in seconds - movement duration
             };
 
             await device.ptzMove(params);
