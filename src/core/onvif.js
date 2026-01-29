@@ -121,7 +121,24 @@ class OnvifManager {
                  } catch(e) {}
             }
             
-            return profiles;
+            // Extract Capabilities
+            const capabilities = [];
+            if (device.services.ptz) capabilities.push('PTZ');
+            if (device.services.imaging) capabilities.push('Imaging');
+            if (device.services.events) capabilities.push('Events');
+            
+            // Audio Check (Check profiles for audio encoder/source config)
+            let hasAudio = false;
+            if (device.profiles) {
+                // node-onvif profiles usually have 'audio' property if audio is supported/configured
+                 for (const key in device.profiles) {
+                    // Check complex structure or simple existence
+                    if (device.profiles[key].audio) { hasAudio = true; break; }
+                }
+            }
+            if (hasAudio) capabilities.push('Audio');
+
+            return { profiles, capabilities };
 
         } catch (e) {
             console.error(`[ONVIF] Failed to get profiles for ${address}:`, e.message);

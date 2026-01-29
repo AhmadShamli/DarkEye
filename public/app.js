@@ -515,12 +515,25 @@ async function fetchOnvifStreams() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url, username, password })
         });
-        const profiles = await res.json();
+        const data = await res.json();
         
-        if (profiles.error) throw new Error(profiles.error);
-        if (profiles.length === 0) throw new Error('No profiles found');
+        // Handle both legacy (array) and new (object) formats for robustness
+        const profiles = Array.isArray(data) ? data : data.profiles;
+        const capabilities = Array.isArray(data) ? [] : (data.capabilities || []);
 
-        list.innerHTML = profiles.map(p => `
+        
+        if (data.error) throw new Error(data.error);
+        if (!profiles || profiles.length === 0) throw new Error('No profiles found');
+
+        const badgeColors = {
+            'PTZ': 'bg-blue-900/50 text-blue-200 border-blue-700',
+            'Audio': 'bg-pink-900/50 text-pink-200 border-pink-700',
+            'Imaging': 'bg-indigo-900/50 text-indigo-200 border-indigo-700',
+            'Events': 'bg-yellow-900/50 text-yellow-200 border-yellow-700',
+            'IO': 'bg-gray-700 text-gray-300 border-gray-600'
+        };
+
+        let html = profiles.map(p => `
             <div class="p-2 border-b border-gray-700 hover:bg-gray-800 flex justify-between items-center group">
                 <div class="overflow-hidden">
                     <div class="text-xs font-bold text-gray-300 group-hover:text-purple-400">${p.name}</div>
@@ -533,6 +546,22 @@ async function fetchOnvifStreams() {
                 </div>
             </div>
         `).join('');
+
+        // Append Capabilities
+        if (capabilities.length > 0) {
+            html += `
+                <div class="p-2 mt-2 border-t border-gray-700 bg-gray-800/30">
+                    <div class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Detected Capabilities</div>
+                    <div class="flex flex-wrap gap-2">
+                        ${capabilities.map(cap => `
+                            <span class="px-2 py-0.5 rounded text-[10px] border ${badgeColors[cap] || 'bg-gray-700'}">${cap}</span>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        list.innerHTML = html;
 
     } catch (e) {
         list.innerHTML = `<div class="text-xs text-center text-red-400">Error: ${e.message}</div>`;
