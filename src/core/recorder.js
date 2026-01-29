@@ -31,11 +31,14 @@ class Recorder {
         
         let basePath = path.join(process.cwd(), 'recordings');
         try {
-             if (fs.existsSync('darkeye.db')) {
-                 const settings = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
-                 if (settings) basePath = settings.value;
+             // Query DB directly (db is already required and initialized)
+             const settings = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
+             if (settings && settings.value) {
+                 basePath = settings.value;
              }
-        } catch(e) {}
+        } catch(e) {
+            console.error(`[Recorder ${id}] Failed to get storage path from DB:`, e.message);
+        }
         
         const recordingPath = path.join(basePath, id);
         if (!fs.existsSync(recordingPath)) fs.mkdirSync(recordingPath, { recursive: true });
