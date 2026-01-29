@@ -92,7 +92,7 @@ function renderCameras() {
                         TL
                     </span>
                 ` : ''}
-                ` : ''}
+
                 
                 <!-- PTZ Control Button (Overlay) -->
                 ${cam.ptz_enabled ? `
