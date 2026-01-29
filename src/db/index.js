@@ -32,6 +32,7 @@ db.exec(`
         timelapse_duration INTEGER DEFAULT 60,
         onvif_service_url TEXT,
         substream_url TEXT,
+        ptz_enabled INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
