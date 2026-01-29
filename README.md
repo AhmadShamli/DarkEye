@@ -50,6 +50,16 @@ DarkEye uses a **Split-Process Architecture** for maximum stability:
 4.  Open the dashboard:
     *   http://localhost:3000
 
+## 🔐 Authentication & Security
+
+DarkEye includes a built-in user management system.
+
+*   **First Run**: You will be prompted to create an **Admin** account.
+*   **Roles**:
+    *   **Admin**: Can manage cameras, system settings, and other users.
+    *   **User**: Can view live streams and recordings only.
+*   **Security**: Passwords are hashed (bcrypt), and sessions use HTTP-only cookies.
+
 ## ⚙️ Configuration
 
 *   **Web Interface**: Port `3000`
@@ -58,12 +68,12 @@ DarkEye uses a **Split-Process Architecture** for maximum stability:
 
 ### Adding Cameras
 1.  Click **"Add Camera"**.
-2.  Enter **RTSP URL** (e.g., `rtsp://user:pass@192.168.1.100/stream1`).
+2.  Enter **RTSP URL** (e.g., `rtsp://user:pass@192.168.1.100/stream1`) or use **Auto Discovery**.
 3.  Choose **Record Mode**:
-    *   **Raw**: Direct copy (Low CPU).
-    *   **Encode**: Re-encode to H.264 (High CPU).
-    *   **Disabled**: Live View only.
-    
+    *   **Raw**: Direct stream copy (Lowest CPU). Recommended.
+    *   **Encode**: Transcode to H.264/AAC (High CPU). Use if source is incompatible.
+    *   **Disabled**: Live View only. No storage usage.
+
 ## 🚀 Deployment / Auto-Start
 
 ### Linux (Systemd) - Recommended for Linux Servers
@@ -77,7 +87,27 @@ We include a helper script to automatically install DarkEye as a system service.
     ```bash
     ./install_service.sh
     ```
-    This will create `/etc/systemd/system/darkeye.service` and enable it on boot.
+    *This script automatically injects the correct Node.js PATH for NVM users.*
+    
+3.  Check status:
+    ```bash
+    systemctl status darkeye
+    ```
+
+### Nginx Reverse Proxy (Optional)
+To run DarkEye on port 80/443 (e.g., `http://cctv.local`):
+
+1.  Copy the example config:
+    ```bash
+    cp nginx.conf.example /etc/nginx/sites-available/darkeye
+    ```
+2.  Edit the `server_name` directive.
+3.  Link and reload Nginx:
+    ```bash
+    ln -s /etc/nginx/sites-available/darkeye /etc/nginx/sites-enabled/
+    systemctl reload nginx
+    ```
+*DarkEye automatically detects if it is running behind a proxy and adjusts stream paths accordingly.*
 
 ### Windows (PM2)
 For Windows, we recommend using **PM2** to manage the process.
@@ -112,3 +142,6 @@ DarkEye/
 
 ## 📝 License
 MIT
+
+---
+*DarkEye by [ExciteCreation](http://www.excitecreation.com)*
