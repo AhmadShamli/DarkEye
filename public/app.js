@@ -687,6 +687,9 @@ async function openRecordings(camId, camName) {
     }
 }
 
+function playVideo(camId, filename) {
+    const player = document.getElementById('videoPlayer');
+    player.src = `/recordings/${camId}/${filename}`;
     player.play();
 }
 
