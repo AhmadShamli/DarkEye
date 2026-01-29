@@ -8,6 +8,7 @@ const db = require('./db');
 const cameraManager = require('./core/camera-manager');
 const storageManager = require('./core/storage-manager');
 const onvifManager = require('./core/onvif');
+const audioManager = require('./core/audio-manager');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
@@ -432,6 +433,79 @@ app.get('/api/debug/fix-db', (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+// --- Audio/Talk Endpoints ---
+
+// Check if camera supports audio talk
+app.get('/api/cameras/:id/audio-support', async (req, res) => {
+    const { id } = req.params;
+    const cam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
+    if (!cam) return res.status(404).json({ error: 'Camera not found' });
+    
+    // Only ONVIF cameras can support audio backchannel
+    if (cam.type !== 'onvif' || !cam.onvif_service_url) {
+        return res.json({ supported: false, reason: 'Only ONVIF cameras support talk' });
+    }
+
+    try {
+        const audioInfo = await onvifManager.getAudioBackchannelInfo(
+            cam.onvif_service_url, 
+            cam.username, 
+            cam.password
+        );
+        res.json(audioInfo);
+    } catch (e) {
+        res.json({ supported: false, error: e.message });
+    }
+});
+
+// Start talk session
+app.post('/api/cameras/:id/talk/start', async (req, res) => {
+    const { id } = req.params;
+    const cam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
+    if (!cam) return res.status(404).json({ error: 'Camera not found' });
+    
+    if (cam.type !== 'onvif' || !cam.onvif_service_url) {
+        return res.status(400).json({ error: 'Only ONVIF cameras support talk' });
+    }
+
+    try {
+        // Get audio backchannel URL
+        const audioInfo = await onvifManager.getAudioBackchannelInfo(
+            cam.onvif_service_url,
+            cam.username,
+            cam.password
+        );
+        
+        if (!audioInfo.supported) {
+            return res.status(400).json({ error: 'Camera does not support audio talk' });
+        }
+
+        const result = audioManager.startTalk(id, audioInfo.rtspUrl, cam.username, cam.password);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Stop talk session
+app.post('/api/cameras/:id/talk/stop', (req, res) => {
+    const { id } = req.params;
+    const result = audioManager.stopTalk(id);
+    res.json(result);
+});
+
+// Send audio data (POST with raw audio in body)
+app.post('/api/cameras/:id/talk/audio', express.raw({ type: 'application/octet-stream', limit: '1mb' }), (req, res) => {
+    const { id } = req.params;
+    
+    if (!audioManager.isActive(id)) {
+        return res.status(400).json({ error: 'No active talk session' });
+    }
+    
+    const success = audioManager.sendAudio(id, req.body);
+    res.json({ success });
 });
 
 app.listen(PORT, () => {

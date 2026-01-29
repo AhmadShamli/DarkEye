@@ -233,6 +233,58 @@ class OnvifManager {
             throw e;
         }
     }
+
+    /**
+     * Get audio backchannel (output) information for talk-to-camera feature
+     * @param {string} address - ONVIF service URL (xaddr)
+     * @param {string} username - Camera username
+     * @param {string} password - Camera password
+     * @returns {object} Audio backchannel info or null if not supported
+     */
+    async getAudioBackchannelInfo(address, username, password) {
+        try {
+            const device = new onvif.OnvifDevice({
+                xaddr: address,
+                user: username,
+                pass: password
+            });
+
+            await device.init();
+
+            // Check if any profile has audio output configuration
+            let audioBackchannelSupported = false;
+            let rtspUrl = null;
+            
+            // node-onvif stores profiles in profile_list after init
+            for (const profile of device.profile_list || []) {
+                // Check for audio encoder (indicates audio capability)
+                if (profile.audio && profile.audio.encoder) {
+                    audioBackchannelSupported = true;
+                    // Get the RTSP URL for this profile
+                    if (profile.stream && profile.stream.rtsp) {
+                        rtspUrl = profile.stream.rtsp;
+                    }
+                    break;
+                }
+            }
+
+            if (audioBackchannelSupported) {
+                console.log(`[ONVIF] Audio backchannel supported at ${address}`);
+                return {
+                    supported: true,
+                    rtspUrl: rtspUrl,
+                    // Backchannel typically uses the same RTSP URL but with special negotiation
+                    backchannelUrl: rtspUrl
+                };
+            } else {
+                console.log(`[ONVIF] No audio backchannel support at ${address}`);
+                return { supported: false };
+            }
+        } catch (e) {
+            console.error(`[ONVIF] Failed to get audio info for ${address}:`, e.message);
+            return { supported: false, error: e.message };
+        }
+    }
 }
 
 module.exports = new OnvifManager();

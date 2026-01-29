@@ -761,3 +761,174 @@ async function ptzStop() {
         console.error("PTZ Stop failed", e);
     }
 }
+
+// --- Talk to Camera ---
+let isTalking = false;
+let mediaStream = null;
+let audioContext = null;
+let mediaRecorder = null;
+let audioProcessor = null;
+
+async function checkAudioSupport(camId) {
+    try {
+        const res = await fetch(`${API_URL}/cameras/${camId}/audio-support`);
+        const data = await res.json();
+        return data.supported;
+    } catch(e) {
+        console.error("Failed to check audio support", e);
+        return false;
+    }
+}
+
+async function toggleTalk() {
+    if (isTalking) {
+        await stopTalk();
+    } else {
+        await startTalk();
+    }
+}
+
+async function startTalk() {
+    if (!currentPtzCamId) return;
+    
+    const talkButton = document.getElementById('talkButton');
+    const talkIcon = document.getElementById('talkIcon');
+    const talkText = document.getElementById('talkText');
+    const talkStatus = document.getElementById('talkStatus');
+    
+    try {
+        // Request microphone permission
+        talkStatus.textContent = 'Requesting microphone access...';
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+                echoCancellation: true,
+                noiseSuppression: true,
+                sampleRate: 8000,
+                channelCount: 1
+            } 
+        });
+        
+        // Start talk session on server
+        talkStatus.textContent = 'Connecting to camera...';
+        const startRes = await fetch(`${API_URL}/cameras/${currentPtzCamId}/talk/start`, {
+            method: 'POST'
+        });
+        const startData = await startRes.json();
+        
+        if (!startRes.ok || !startData.success) {
+            throw new Error(startData.error || 'Failed to start talk session');
+        }
+        
+        // Set up audio processing
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        
+        // Create a ScriptProcessor to capture audio data
+        audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+        
+        audioProcessor.onaudioprocess = async (e) => {
+            if (!isTalking) return;
+            
+            const inputData = e.inputBuffer.getChannelData(0);
+            // Convert Float32 to Int16
+            const int16Data = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+                int16Data[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)));
+            }
+            
+            // Send audio data to server
+            try {
+                await fetch(`${API_URL}/cameras/${currentPtzCamId}/talk/audio`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: int16Data.buffer
+                });
+            } catch(e) {
+                // Silent fail for individual audio chunks
+            }
+        };
+        
+        source.connect(audioProcessor);
+        audioProcessor.connect(audioContext.destination);
+        
+        isTalking = true;
+        talkButton.classList.remove('bg-gray-700', 'hover:bg-red-600');
+        talkButton.classList.add('bg-red-600', 'animate-pulse');
+        talkIcon.classList.remove('fa-microphone');
+        talkIcon.classList.add('fa-microphone-slash');
+        talkText.textContent = 'Stop Talking';
+        talkStatus.textContent = 'Speaking to camera...';
+        
+    } catch(e) {
+        console.error("Failed to start talk", e);
+        talkStatus.textContent = `Error: ${e.message}`;
+        await stopTalk();
+    }
+}
+
+async function stopTalk() {
+    const talkButton = document.getElementById('talkButton');
+    const talkIcon = document.getElementById('talkIcon');
+    const talkText = document.getElementById('talkText');
+    const talkStatus = document.getElementById('talkStatus');
+    
+    isTalking = false;
+    
+    // Stop audio processing
+    if (audioProcessor) {
+        audioProcessor.disconnect();
+        audioProcessor = null;
+    }
+    
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+    }
+    
+    // Stop media stream
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+    
+    // Stop server session
+    if (currentPtzCamId) {
+        try {
+            await fetch(`${API_URL}/cameras/${currentPtzCamId}/talk/stop`, {
+                method: 'POST'
+            });
+        } catch(e) {
+            console.error("Failed to stop talk session", e);
+        }
+    }
+    
+    // Reset UI
+    talkButton.classList.add('bg-gray-700', 'hover:bg-red-600');
+    talkButton.classList.remove('bg-red-600', 'animate-pulse');
+    talkIcon.classList.add('fa-microphone');
+    talkIcon.classList.remove('fa-microphone-slash');
+    talkText.textContent = 'Hold to Talk';
+    talkStatus.textContent = 'Click to start speaking to the camera';
+}
+
+// Update openPtzModal to check for audio support and show/hide talk section
+const originalOpenPtzModal = openPtzModal;
+openPtzModal = async function(id) {
+    originalOpenPtzModal(id);
+    
+    // Check if camera supports audio
+    const talkSection = document.getElementById('talkSection');
+    const supported = await checkAudioSupport(id);
+    
+    if (supported) {
+        talkSection.classList.remove('hidden');
+    } else {
+        talkSection.classList.add('hidden');
+    }
+    
+    // Reset talk state when opening modal
+    if (isTalking) {
+        await stopTalk();
+    }
+};
+

@@ -434,6 +434,18 @@
                     </div>
                 </div>
 
+                <!-- Talk -->
+                <div id="talkSection" class="space-y-2 hidden">
+                    <div class="text-xs uppercase font-bold text-gray-500 tracking-wider text-center">Talk</div>
+                    <div class="flex justify-center">
+                        <button id="talkButton" class="w-full py-3 rounded-xl bg-gray-700 hover:bg-red-600 active:scale-95 transition-all text-white shadow-lg flex items-center justify-center gap-2" onclick="toggleTalk()">
+                            <i class="fa-solid fa-microphone" id="talkIcon"></i>
+                            <span id="talkText">Hold to Talk</span>
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-center text-gray-500" id="talkStatus">Click to start speaking to the camera</p>
+                </div>
+
                 <div class="mt-auto text-xs text-center text-gray-500">
                     Hold buttons to move.<br>Release to stop.
                 </div>
