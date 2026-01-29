@@ -177,11 +177,11 @@ app.get('/api/cameras', (req, res) => {
 });
 
 app.post('/api/cameras', (req, res) => {
-    const { name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url } = req.body;
+    const { name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url, ptz_enabled } = req.body;
     const id = Math.random().toString(36).substring(2, 7).toUpperCase();
     try {
-        const stmt = db.prepare(`INSERT INTO cameras (id, name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-        stmt.run(id, name, type, url, username, password, record_mode || 'raw', timelapse_enabled ? 1 : 0, segment_duration || 15, timelapse_interval || 5, timelapse_duration || 60, onvif_service_url, substream_url);
+        const stmt = db.prepare(`INSERT INTO cameras (id, name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url, ptz_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        stmt.run(id, name, type, url, username, password, record_mode || 'raw', timelapse_enabled ? 1 : 0, segment_duration || 15, timelapse_interval || 5, timelapse_duration || 60, onvif_service_url, substream_url, ptz_enabled ? 1 : 0);
         const newCam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
         cameraManager.startCamera(newCam);
         res.json(newCam);
@@ -190,11 +190,11 @@ app.post('/api/cameras', (req, res) => {
 
 app.put('/api/cameras/:id', (req, res) => {
     const { id } = req.params;
-    const { name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url } = req.body;
+    const { name, type, url, username, password, record_mode, timelapse_enabled, segment_duration, timelapse_interval, timelapse_duration, onvif_service_url, substream_url, ptz_enabled } = req.body;
     try {
         cameraManager.stopCamera(id);
-        const stmt = db.prepare(`UPDATE cameras SET name=?, type=?, url=?, username=?, password=?, record_mode=?, timelapse_enabled=?, segment_duration=?, timelapse_interval=?, timelapse_duration=?, onvif_service_url=?, substream_url=? WHERE id=?`);
-        stmt.run(name, type, url, username, password, record_mode || 'raw', timelapse_enabled ? 1 : 0, segment_duration || 15, timelapse_interval || 5, timelapse_duration || 60, onvif_service_url, substream_url, id);
+        const stmt = db.prepare(`UPDATE cameras SET name=?, type=?, url=?, username=?, password=?, record_mode=?, timelapse_enabled=?, segment_duration=?, timelapse_interval=?, timelapse_duration=?, onvif_service_url=?, substream_url=?, ptz_enabled=? WHERE id=?`);
+        stmt.run(name, type, url, username, password, record_mode || 'raw', timelapse_enabled ? 1 : 0, segment_duration || 15, timelapse_interval || 5, timelapse_duration || 60, onvif_service_url, substream_url, ptz_enabled ? 1 : 0, id);
         const updatedCam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
         if (updatedCam.record_enabled) cameraManager.startCamera(updatedCam);
         res.json(updatedCam);
@@ -250,8 +250,33 @@ app.post('/api/cameras/:id/live/heartbeat', (req, res) => {
         const parts = streamUrl.split('://');
         streamUrl = `${parts[0]}://${encodeURIComponent(cam.username)}:${encodeURIComponent(cam.password)}@${parts[1]}`;
     }
-    require('./core/stream-manager').heartbeat(id, streamUrl);
     res.json({ success: true });
+});
+
+app.post('/api/cameras/:id/ptz', async (req, res) => {
+    const { id } = req.params;
+    const { action, x, y, z } = req.body; // action: 'move' or 'stop'
+    
+    const cam = db.prepare('SELECT * FROM cameras WHERE id = ?').get(id);
+    if (!cam) return res.status(404).json({ error: 'Camera not found' });
+    if (!cam.ptz_enabled && action !== 'stop') return res.status(400).json({ error: 'PTZ not enabled for this camera' });
+
+    // Use onvif_service_url if available (most reliable), else fallback to parsing 'url'
+    // But 'url' is RTSP... we need the XAddr (ONVIF Service URL).
+    // We saved it in `cameras` table as `onvif_service_url`.
+    if (!cam.onvif_service_url) return res.status(400).json({ error: 'No ONVIF URL configured' });
+
+    try {
+        if (action === 'stop') {
+             await onvifManager.stop(cam.onvif_service_url, cam.username, cam.password);
+        } else {
+             // Velocity normalization handled by frontend mostly, but ensure limits
+             await onvifManager.move(cam.onvif_service_url, cam.username, cam.password, { x, y, z });
+        }
+        res.json({ success: true });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // --- Settings ---

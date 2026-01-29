@@ -92,6 +92,14 @@ function renderCameras() {
                         TL
                     </span>
                 ` : ''}
+                ` : ''}
+                
+                <!-- PTZ Control Button (Overlay) -->
+                ${cam.ptz_enabled ? `
+                    <button onclick="openPtzModal('${cam.id}')" class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border border-white/10 bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-1 z-20">
+                        <i class="fa-solid fa-up-down-left-right"></i> PTZ
+                    </button>
+                ` : ''}
             </div>
 
             <!-- Thumbnail / Preview -->
@@ -237,6 +245,7 @@ async function handleSaveCamera(e) {
     
     // Checkboxes
     data.timelapse_enabled = formData.get('timelapse_enabled') === 'on';
+    data.ptz_enabled = formData.get('ptz_enabled') === 'on';
 
     try {
         const method = id ? 'PUT' : 'POST';
@@ -559,6 +568,12 @@ async function fetchOnvifStreams() {
                     </div>
                 </div>
             `;
+
+            // Auto-enable/show PTZ option if detected
+            if (capabilities.includes('PTZ')) {
+                document.getElementById('fieldPtz').classList.remove('hidden');
+                document.querySelector('[name="ptz_enabled"]').checked = true;
+            }
         }
 
         list.innerHTML = html;
@@ -599,7 +614,27 @@ function openEditCamera(id) {
     form.querySelector('[name="segment_duration"]').value = cam.segment_duration || 15;
     form.querySelector('[name="timelapse_enabled"]').checked = !!cam.timelapse_enabled;
     form.querySelector('[name="timelapse_interval"]').value = cam.timelapse_interval || 5;
+    form.querySelector('[name="timelapse_interval"]').value = cam.timelapse_interval || 5;
     form.querySelector('[name="timelapse_duration"]').value = cam.timelapse_duration || 60;
+    
+    // PTZ Logic
+    const ptzEnabled = !!cam.ptz_enabled;
+    form.querySelector('[name="ptz_enabled"]').checked = ptzEnabled;
+    if (ptzEnabled || cam.type === 'onvif') {
+         // If it's ONVIF, we probably want to show the option anyway so user can toggle it manually if discovery didn't happen right now,
+         // OR we strictly follow "if capability found".
+         // User asked: "add option to enable PTZ when PTZ capabilities were found, otherwise keep it hidden/disabled"
+         // But when EDITING, we might want to see what we saved.
+         if (ptzEnabled) {
+             document.getElementById('fieldPtz').classList.remove('hidden');
+         } else {
+             // Keep hidden unless we run discovery again? 
+             // Or maybe just show it if it's ONVIF type? 
+             // Let's reset to hidden default, and only show if ptzEnabled is true.
+             document.getElementById('fieldPtz').classList.add('hidden');
+             if (ptzEnabled) document.getElementById('fieldPtz').classList.remove('hidden');
+         }
+    }
 
     toggleFields();
     switchTab('manual');
@@ -652,12 +687,74 @@ async function openRecordings(camId, camName) {
     }
 }
 
-function playVideo(camId, filename) {
-    const player = document.getElementById('videoPlayer');
-    // We need to serve static files from recordings directory. 
-    // Express static is serving 'public'. We need to expose 'recordings' as well.
-    // I missed adding that in server.js. I'll need to add it.
-    // Assuming route: /recordings/camId/filename
-    player.src = `/recordings/${camId}/${filename}`;
     player.play();
+}
+
+// --- PTZ ---
+let currentPtzCamId = null;
+
+function openPtzModal(id) {
+    currentPtzCamId = id;
+    const cam = cameras.find(c => c.id === id);
+    if (!cam) return;
+    
+    openModal('ptzModal');
+    
+    const container = document.getElementById('ptzVideoContainer');
+    const existing = container.querySelector('iframe');
+    if (existing) existing.remove();
+    
+    // Use same WebRTC logic
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+    const isDev = port === '3000' || port === '3001'; 
+    const streamBase = isDev ? `http://${hostname}:8889/live` : `${window.location.protocol}//${hostname}${port ? ':'+port : ''}/live`;
+    const streamUrl = `${streamBase}/${id}/`;
+    
+    const iframe = document.createElement('iframe');
+    iframe.src = streamUrl;
+    iframe.className = "w-full h-full"; // Full size of container
+    iframe.allow = "autoplay; fullscreen; encrypted-media; picture-in-picture";
+    iframe.style.border = "none";
+    
+    container.appendChild(iframe);
+}
+
+async function ptzMove(direction) {
+    if (!currentPtzCamId) return;
+    
+    let vector = { x: 0, y: 0, z: 0 };
+    const speed = 0.5; // Moderate speed
+    
+    switch(direction) {
+        case 'up': vector.y = speed; break;
+        case 'down': vector.y = -speed; break;
+        case 'left': vector.x = -speed; break;
+        case 'right': vector.x = speed; break;
+        case 'zoomIn': vector.z = speed; break;
+        case 'zoomOut': vector.z = -speed; break;
+    }
+    
+    try {
+        await fetch(`${API_URL}/cameras/${currentPtzCamId}/ptz`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'move', ...vector })
+        });
+    } catch(e) {
+        console.error("PTZ Move failed", e);
+    }
+}
+
+async function ptzStop() {
+    if (!currentPtzCamId) return;
+    try {
+        await fetch(`${API_URL}/cameras/${currentPtzCamId}/ptz`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'stop' })
+        });
+    } catch(e) {
+        console.error("PTZ Stop failed", e);
+    }
 }
