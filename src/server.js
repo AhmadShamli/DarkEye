@@ -13,6 +13,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.set('trust proxy', 1); // Trust Nginx/Reverse Proxy
 app.use(cors());
 app.use(bodyParser.json());
 

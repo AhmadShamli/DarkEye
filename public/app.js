@@ -176,10 +176,16 @@ function openLiveView(id) {
     const video = document.getElementById('livePlayer');
     if (video) video.style.display = 'none';
 
-    // Create WebRTC Iframe
     // Stream path is 'live/<id>'
     const hostname = window.location.hostname;
-    const streamUrl = `http://${hostname}:8889/live/${id}/`;
+    const port = window.location.port;
+    
+    // Heuristic: If we are on port 3000 (Dev), expect MediaMTX on 8889 (Direct).
+    // If we are on 80/443 (Prod/Nginx), expect Nginx to proxy /live/ to MediaMTX.
+    const isDev = port === '3000' || port === '3001'; 
+    const streamBase = isDev ? `http://${hostname}:8889/live` : `${window.location.protocol}//${hostname}${port ? ':'+port : ''}/live`;
+    
+    const streamUrl = `${streamBase}/${id}/`;
     
     const iframe = document.createElement('iframe');
     iframe.src = streamUrl;
