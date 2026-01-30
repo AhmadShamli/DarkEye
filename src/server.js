@@ -365,10 +365,41 @@ app.get('/api/system/stats', async (req, res) => {
             console.error('Network stats error:', e.message);
         }
 
+        // Get actual disk space for storage path
+        let diskAvailable = 0;
+        let diskWarning = false;
+        try {
+            const disks = await si.fsSize();
+            // Find the disk that contains the storage path
+            const normalizedPath = path.resolve(basePath).toLowerCase();
+            let matchedDisk = null;
+            
+            for (const disk of disks) {
+                const mount = disk.mount.toLowerCase();
+                if (normalizedPath.startsWith(mount)) {
+                    if (!matchedDisk || mount.length > matchedDisk.mount.length) {
+                        matchedDisk = disk;
+                    }
+                }
+            }
+            
+            if (matchedDisk) {
+                diskAvailable = Math.round(matchedDisk.available / (1024 * 1024 * 1024) * 100) / 100; // GB
+                // Check if configured limit exceeds available space
+                if (storageLimit > diskAvailable + (storageUsed / (1024 * 1024 * 1024))) {
+                    diskWarning = true;
+                }
+            }
+        } catch (e) {
+            console.error('Disk space check error:', e.message);
+        }
+
         res.json({
             storage: {
                 used: Math.round(storageUsed / (1024 * 1024 * 1024) * 100) / 100, // GB
                 limit: storageLimit,
+                available: diskAvailable,
+                warning: diskWarning,
                 percent: Math.min(100, Math.round((storageUsed / (storageLimit * 1024 * 1024 * 1024)) * 100))
             },
             cpu: {

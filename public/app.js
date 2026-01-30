@@ -60,8 +60,20 @@ async function fetchSystemStats() {
         const data = await res.json();
         
         // Storage
-        document.getElementById('statStorage').textContent = `${data.storage.used} / ${data.storage.limit} GB`;
-        document.getElementById('statStorageBar').style.width = `${data.storage.percent}%`;
+        const storageEl = document.getElementById('statStorage');
+        const storageBar = document.getElementById('statStorageBar');
+        const storageCard = storageEl.closest('.glass-card');
+        
+        if (data.storage.warning) {
+            storageEl.innerHTML = `${data.storage.used} / ${data.storage.limit} GB <i class="fa-solid fa-triangle-exclamation text-yellow-400 ml-1" title="Limit exceeds available disk space (${data.storage.available} GB free)"></i>`;
+            storageBar.classList.remove('bg-purple-500');
+            storageBar.classList.add('bg-yellow-500');
+        } else {
+            storageEl.textContent = `${data.storage.used} / ${data.storage.limit} GB`;
+            storageBar.classList.remove('bg-yellow-500');
+            storageBar.classList.add('bg-purple-500');
+        }
+        storageBar.style.width = `${data.storage.percent}%`;
         
         // CPU
         document.getElementById('statCpu').textContent = `${data.cpu.percent}%`;
