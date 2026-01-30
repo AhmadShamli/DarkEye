@@ -52,6 +52,12 @@ class MediaMTXManager {
 rtspAddress: :8554
 protocols: [tcp]
 
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsSegmentCount: 3
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
 webrtcAddress: :8889
 webrtcICEHostNAT1To1IPs: [127.0.0.1]
 

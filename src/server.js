@@ -284,6 +284,14 @@ app.post('/api/cameras/:id/ptz', async (req, res) => {
 const os = require('os');
 const si = require('systeminformation');
 
+// Cloudflare detection endpoint
+app.get('/api/system/cloudflare', (req, res) => {
+    // Cloudflare adds specific headers to requests
+    const cfHeaders = ['cf-ray', 'cf-connecting-ip', 'cf-ipcountry', 'cf-visitor'];
+    const isCloudflare = cfHeaders.some(h => req.headers[h] !== undefined);
+    res.json({ isCloudflare });
+});
+
 // Track network for rate calculation
 let lastNetworkStats = null;
 let lastNetworkTime = Date.now();

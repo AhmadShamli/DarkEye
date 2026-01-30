@@ -20,14 +20,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Detect if behind Cloudflare Tunnel (WebRTC won't work, use HLS instead)
 async function detectCloudflare() {
     try {
-        const res = await fetch(`${API_URL}/auth/status`);
-        // Cloudflare adds cf-ray header to all responses
-        isCloudflare = res.headers.has('cf-ray') || res.headers.has('cf-cache-status');
+        // Check via backend endpoint that can see the CF headers
+        const res = await fetch(`${API_URL}/system/cloudflare`);
+        const data = await res.json();
+        isCloudflare = data.isCloudflare === true;
         if (isCloudflare) {
             console.log('[DarkEye] Cloudflare Tunnel detected - using HLS for live streams');
         }
     } catch (e) {
-        // Ignore detection errors
+        // Fallback: check if server header is present (some proxies expose it)
+        isCloudflare = false;
     }
 }
 
@@ -268,20 +270,22 @@ function openLiveView(id) {
     const hostname = window.location.hostname;
     const port = window.location.port;
     
-    // Heuristic: If we are on port 3000 (Dev), expect MediaMTX on 8889 (Direct).
-    // If we are on 80/443 (Prod/Nginx), expect Nginx to proxy /live/ to MediaMTX.
+    // Heuristic: If we are on port 3000 (Dev), expect MediaMTX directly.
+    // If we are on 80/443 (Prod/Nginx), expect Nginx to proxy.
     const isDev = port === '3000' || port === '3001'; 
-    const streamBase = isDev ? `http://${hostname}:8889/live` : `${window.location.protocol}//${hostname}${port ? ':'+port : ''}/live`;
     
     // Use HLS if behind Cloudflare (WebRTC doesn't work through Cloudflare Tunnel)
     if (isCloudflare) {
-        // HLS stream URL from MediaMTX
-        const hlsUrl = `${streamBase}/${id}/index.m3u8`;
+        // HLS uses port 8888 in dev, /hls/ path in prod (nginx proxies to 8888)
+        const hlsBase = isDev ? `http://${hostname}:8888` : `${window.location.protocol}//${hostname}${port ? ':'+port : ''}/hls`;
+        const hlsUrl = `${hlsBase}/live/${id}/index.m3u8`;
+        
+        console.log('[DarkEye] Using HLS stream:', hlsUrl);
         
         if (video) {
             video.style.display = 'block';
             
-            if (Hls.isSupported()) {
+            if (typeof Hls !== 'undefined' && Hls.isSupported()) {
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: true,
@@ -292,24 +296,31 @@ function openLiveView(id) {
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     video.play().catch(() => {});
                 });
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    console.error('[HLS] Error:', data.type, data.details);
+                });
                 // Store hls instance for cleanup
                 video._hls = hls;
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 // Safari native HLS
                 video.src = hlsUrl;
                 video.play().catch(() => {});
+            } else {
+                console.error('[DarkEye] HLS not supported in this browser');
             }
         }
     } else {
         // Use WebRTC iframe (default, lower latency)
         if (video) video.style.display = 'none';
         
-        const streamUrl = `${streamBase}/${id}/`;
+        // WebRTC uses port 8889 in dev, /live/ path in prod
+        const webrtcBase = isDev ? `http://${hostname}:8889` : `${window.location.protocol}//${hostname}${port ? ':'+port : ''}`;
+        const streamUrl = `${webrtcBase}/live/${id}/`;
         
         const iframe = document.createElement('iframe');
         iframe.src = streamUrl;
         iframe.className = "w-full h-full rounded-2xl";
-        iframe.allow = "autoplay; fullscreen; encrypted-media; picture-in-picture";
+        iframe.setAttribute('allowfullscreen', '');
         iframe.style.border = "none";
         iframe.id = "webrtcFrame";
         
