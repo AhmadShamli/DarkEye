@@ -10,8 +10,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchSystemStats();
         // Refresh system stats every 5 seconds
         setInterval(fetchSystemStats, 5000);
+        // Refresh thumbnails every 30 seconds
+        setInterval(refreshThumbnails, 30000);
     }
 });
+
+// Refresh all camera thumbnails without re-rendering the grid
+function refreshThumbnails() {
+    const thumbnails = document.querySelectorAll('#cameraGrid img[src*="/thumbnail"]');
+    thumbnails.forEach(img => {
+        const baseUrl = img.src.split('?')[0];
+        img.src = `${baseUrl}?t=${Date.now()}`;
+    });
+}
 
 // --- Auth ---
 async function checkAuth() {
