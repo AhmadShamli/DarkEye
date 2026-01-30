@@ -14,12 +14,13 @@ server {
     }
 
     # MediaMTX (WebRTC/HLS/Stream)
-    # Proxies /live/request -> http://localhost:8889/request
+    # Preserves /live/ prefix when proxying to MediaMTX
     location /live/ {
-        proxy_pass http://localhost:8889/;
+        proxy_pass http://localhost:8889;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_read_timeout 86400;
     }
 }
