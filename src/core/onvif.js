@@ -255,16 +255,24 @@ class OnvifManager {
             let audioBackchannelSupported = false;
             let rtspUrl = null;
             
-            // node-onvif stores profiles in profile_list after init
-            for (const profile of device.profile_list || []) {
-                // Check for audio encoder (indicates audio capability)
-                if (profile.audio && profile.audio.encoder) {
-                    audioBackchannelSupported = true;
-                    // Get the RTSP URL for this profile
-                    if (profile.stream && profile.stream.rtsp) {
-                        rtspUrl = profile.stream.rtsp;
+            // node-onvif stores profiles as an object (key = profile token)
+            if (device.profiles) {
+                for (const key in device.profiles) {
+                    const profile = device.profiles[key];
+                    // Check for audio encoder (indicates audio capability)
+                    if (profile.audio) {
+                        audioBackchannelSupported = true;
+                        // Get the RTSP URL for this profile
+                        try {
+                            rtspUrl = device.getUdpStreamUrl('RTSP', key);
+                        } catch (e) {
+                            // Try stream object as fallback
+                            if (profile.stream && profile.stream.rtsp) {
+                                rtspUrl = profile.stream.rtsp;
+                            }
+                        }
+                        break;
                     }
-                    break;
                 }
             }
 
