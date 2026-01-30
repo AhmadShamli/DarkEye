@@ -7,6 +7,9 @@ let cameras = [];
 document.addEventListener('DOMContentLoaded', async () => {
     if (await checkAuth()) {
         fetchCameras();
+        fetchSystemStats();
+        // Refresh system stats every 5 seconds
+        setInterval(fetchSystemStats, 5000);
     }
 });
 
@@ -40,6 +43,41 @@ async function fetchCameras() {
         renderCameras();
     } catch (e) {
         console.error("Failed to fetch cameras");
+    }
+}
+
+// Helper to format bytes
+function formatBytes(kb) {
+    if (kb >= 1024) {
+        return (kb / 1024).toFixed(1) + ' MB/s';
+    }
+    return kb.toFixed(0) + ' KB/s';
+}
+
+async function fetchSystemStats() {
+    try {
+        const res = await fetch(`${API_URL}/system/stats`);
+        const data = await res.json();
+        
+        // Storage
+        document.getElementById('statStorage').textContent = `${data.storage.used} / ${data.storage.limit} GB`;
+        document.getElementById('statStorageBar').style.width = `${data.storage.percent}%`;
+        
+        // CPU
+        document.getElementById('statCpu').textContent = `${data.cpu.percent}%`;
+        document.getElementById('statCpuBar').style.width = `${data.cpu.percent}%`;
+        
+        // Memory
+        document.getElementById('statMemory').textContent = `${data.memory.used} / ${data.memory.total} GB`;
+        document.getElementById('statMemoryBar').style.width = `${data.memory.percent}%`;
+        
+        // Network
+        document.getElementById('statNetwork').innerHTML = `
+            <span class="text-green-400"><i class="fa-solid fa-arrow-down text-[10px]"></i> ${formatBytes(data.network.rxRate)}</span>
+            <span class="text-red-400"><i class="fa-solid fa-arrow-up text-[10px]"></i> ${formatBytes(data.network.txRate)}</span>
+        `;
+    } catch (e) {
+        console.error("Failed to fetch system stats", e);
     }
 }
 

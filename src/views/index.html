@@ -116,7 +116,64 @@
             </div>
         </header>
 
-        <!-- Stats / Overview (Optional, can add later) -->
+        <!-- System Stats Bar -->
+        <div id="systemStats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 animate-fade-in-up">
+            <!-- Storage -->
+            <div class="glass-card rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-600/20 flex items-center justify-center text-purple-400">
+                    <i class="fa-solid fa-hard-drive"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Storage</div>
+                    <div class="text-sm font-bold text-white truncate" id="statStorage">-- / -- GB</div>
+                    <div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+                        <div class="bg-purple-500 h-1.5 rounded-full transition-all duration-500" id="statStorageBar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPU -->
+            <div class="glass-card rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/20 flex items-center justify-center text-blue-400">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">CPU</div>
+                    <div class="text-sm font-bold text-white" id="statCpu">--%</div>
+                    <div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+                        <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-500" id="statCpuBar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory -->
+            <div class="glass-card rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500/20 to-green-600/20 flex items-center justify-center text-green-400">
+                    <i class="fa-solid fa-memory"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Memory</div>
+                    <div class="text-sm font-bold text-white" id="statMemory">-- / -- GB</div>
+                    <div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+                        <div class="bg-green-500 h-1.5 rounded-full transition-all duration-500" id="statMemoryBar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network -->
+            <div class="glass-card rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-600/20 flex items-center justify-center text-orange-400">
+                    <i class="fa-solid fa-network-wired"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Network</div>
+                    <div class="text-sm font-bold text-white flex items-center gap-2" id="statNetwork">
+                        <span class="text-green-400"><i class="fa-solid fa-arrow-down text-[10px]"></i> --</span>
+                        <span class="text-red-400"><i class="fa-solid fa-arrow-up text-[10px]"></i> --</span>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Camera Grid -->
         <div id="cameraGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up">

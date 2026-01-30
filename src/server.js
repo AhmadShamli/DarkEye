@@ -280,6 +280,115 @@ app.post('/api/cameras/:id/ptz', async (req, res) => {
     }
 });
 
+// --- System Stats ---
+const os = require('os');
+const si = require('systeminformation');
+
+// Track network for rate calculation
+let lastNetworkStats = null;
+let lastNetworkTime = Date.now();
+
+app.get('/api/system/stats', async (req, res) => {
+    try {
+        // Storage usage
+        const basePath = getStoragePath();
+        let storageUsed = 0;
+        
+        if (fs.existsSync(basePath)) {
+            const getDirSize = (dirPath) => {
+                let size = 0;
+                try {
+                    const files = fs.readdirSync(dirPath);
+                    for (const file of files) {
+                        const filePath = path.join(dirPath, file);
+                        const stat = fs.statSync(filePath);
+                        if (stat.isDirectory()) {
+                            size += getDirSize(filePath);
+                        } else {
+                            size += stat.size;
+                        }
+                    }
+                } catch (e) { /* ignore errors */ }
+                return size;
+            };
+            storageUsed = getDirSize(basePath);
+        }
+        
+        // Get storage limit from settings
+        const storageLimitRow = db.prepare("SELECT value FROM settings WHERE key = 'max_storage_gb'").get();
+        const storageLimit = storageLimitRow ? parseFloat(storageLimitRow.value) : 100; // Default 100GB
+
+        // CPU usage using systeminformation
+        const cpuLoad = await si.currentLoad();
+        const cpuPercent = Math.round(cpuLoad.currentLoad);
+
+        // Memory usage
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+        const memPercent = Math.round((usedMem / totalMem) * 100);
+
+        // Network usage using systeminformation
+        let rxRate = 0, txRate = 0;
+        try {
+            const networkStats = await si.networkStats();
+            const now = Date.now();
+            
+            if (lastNetworkStats && networkStats.length > 0) {
+                const elapsed = (now - lastNetworkTime) / 1000; // seconds
+                if (elapsed > 0) {
+                    // Sum all interfaces
+                    let totalRx = 0, totalTx = 0;
+                    let lastTotalRx = 0, lastTotalTx = 0;
+                    
+                    networkStats.forEach((iface, i) => {
+                        totalRx += iface.rx_bytes || 0;
+                        totalTx += iface.tx_bytes || 0;
+                        if (lastNetworkStats[i]) {
+                            lastTotalRx += lastNetworkStats[i].rx_bytes || 0;
+                            lastTotalTx += lastNetworkStats[i].tx_bytes || 0;
+                        }
+                    });
+                    
+                    rxRate = Math.round((totalRx - lastTotalRx) / elapsed / 1024); // KB/s
+                    txRate = Math.round((totalTx - lastTotalTx) / elapsed / 1024); // KB/s
+                    
+                    // Ensure non-negative
+                    rxRate = Math.max(0, rxRate);
+                    txRate = Math.max(0, txRate);
+                }
+            }
+            
+            lastNetworkStats = networkStats;
+            lastNetworkTime = now;
+        } catch (e) {
+            console.error('Network stats error:', e.message);
+        }
+
+        res.json({
+            storage: {
+                used: Math.round(storageUsed / (1024 * 1024 * 1024) * 100) / 100, // GB
+                limit: storageLimit,
+                percent: Math.min(100, Math.round((storageUsed / (storageLimit * 1024 * 1024 * 1024)) * 100))
+            },
+            cpu: {
+                percent: cpuPercent
+            },
+            memory: {
+                used: Math.round(usedMem / (1024 * 1024 * 1024) * 100) / 100, // GB
+                total: Math.round(totalMem / (1024 * 1024 * 1024) * 100) / 100, // GB
+                percent: memPercent
+            },
+            network: {
+                rxRate: rxRate, // KB/s
+                txRate: txRate  // KB/s
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // --- Settings ---
 app.get('/api/settings', (req, res) => {
     const settings = db.prepare('SELECT * FROM settings').all();
