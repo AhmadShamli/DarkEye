@@ -2,10 +2,12 @@ const API_URL = '/api';
 
 // --- State ---
 let cameras = [];
+let isCloudflare = false; // Auto-detected if behind Cloudflare Tunnel
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
     if (await checkAuth()) {
+        detectCloudflare(); // Check if behind Cloudflare Tunnel
         fetchCameras();
         fetchSystemStats();
         // Refresh system stats every 5 seconds
@@ -14,6 +16,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         setInterval(refreshThumbnails, 30000);
     }
 });
+
+// Detect if behind Cloudflare Tunnel (WebRTC won't work, use HLS instead)
+async function detectCloudflare() {
+    try {
+        const res = await fetch(`${API_URL}/auth/status`);
+        // Cloudflare adds cf-ray header to all responses
+        isCloudflare = res.headers.has('cf-ray') || res.headers.has('cf-cache-status');
+        if (isCloudflare) {
+            console.log('[DarkEye] Cloudflare Tunnel detected - using HLS for live streams');
+        }
+    } catch (e) {
+        // Ignore detection errors
+    }
+}
 
 // Refresh all camera thumbnails without re-rendering the grid
 function refreshThumbnails() {
@@ -218,9 +234,14 @@ function closeModal(id) {
     if (id === 'liveModal') {
         const video = document.getElementById('livePlayer');
         if (video) {
+            // Clean up HLS instance if exists
+            if (video._hls) {
+                video._hls.destroy();
+                video._hls = null;
+            }
             video.pause();
             video.src = "";
-            video.style.display = 'block'; // Reset for next time if we revert?
+            video.style.display = 'block';
         }
         
         // Remove WebRTC Frame
@@ -241,10 +262,8 @@ function openLiveView(id) {
     const existingFrame = container.querySelector('iframe');
     if (existingFrame) existingFrame.remove();
 
-    // Hide the video tag (we swapped to iframe)
     const video = document.getElementById('livePlayer');
-    if (video) video.style.display = 'none';
-
+    
     // Stream path is 'live/<id>'
     const hostname = window.location.hostname;
     const port = window.location.port;
@@ -254,18 +273,48 @@ function openLiveView(id) {
     const isDev = port === '3000' || port === '3001'; 
     const streamBase = isDev ? `http://${hostname}:8889/live` : `${window.location.protocol}//${hostname}${port ? ':'+port : ''}/live`;
     
-    const streamUrl = `${streamBase}/${id}/`;
-    
-    const iframe = document.createElement('iframe');
-    iframe.src = streamUrl;
-    iframe.className = "w-full h-full rounded-2xl";
-    iframe.allow = "autoplay; fullscreen; encrypted-media; picture-in-picture";
-    iframe.style.border = "none";
-    iframe.id = "webrtcFrame";
-    
-    // Append to container, but keep it behind the close button/badge (z-index handle that)
-    // Actually, simply appending it is fine as absolute elements are z-indexed higher.
-    container.appendChild(iframe);
+    // Use HLS if behind Cloudflare (WebRTC doesn't work through Cloudflare Tunnel)
+    if (isCloudflare) {
+        // HLS stream URL from MediaMTX
+        const hlsUrl = `${streamBase}/${id}/index.m3u8`;
+        
+        if (video) {
+            video.style.display = 'block';
+            
+            if (Hls.isSupported()) {
+                const hls = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 90
+                });
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => {});
+                });
+                // Store hls instance for cleanup
+                video._hls = hls;
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Safari native HLS
+                video.src = hlsUrl;
+                video.play().catch(() => {});
+            }
+        }
+    } else {
+        // Use WebRTC iframe (default, lower latency)
+        if (video) video.style.display = 'none';
+        
+        const streamUrl = `${streamBase}/${id}/`;
+        
+        const iframe = document.createElement('iframe');
+        iframe.src = streamUrl;
+        iframe.className = "w-full h-full rounded-2xl";
+        iframe.allow = "autoplay; fullscreen; encrypted-media; picture-in-picture";
+        iframe.style.border = "none";
+        iframe.id = "webrtcFrame";
+        
+        container.appendChild(iframe);
+    }
 }
 
 function openAddCamera() {
