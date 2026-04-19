@@ -656,6 +656,11 @@ app.post('/api/cameras/:id/talk/audio', express.raw({ type: 'application/octet-s
     res.json({ success });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+db.init().then(() => {
+    app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+    });
+}).catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
 });
