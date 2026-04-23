@@ -51,15 +51,21 @@ app.get('/', (req, res) => {
 // Setup (First Run)
 app.post('/api/auth/setup', async (req, res) => {
     const { username, password } = req.body;
+    const cleanUsername = typeof username === 'string' ? username.trim() : '';
+    const cleanPassword = typeof password === 'string' ? password : '';
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
     if (userCount > 0) return res.status(403).json({ error: 'Setup already completed.' });
-    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
+    if (!cleanUsername || !cleanPassword) return res.status(400).json({ error: 'Missing fields' });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(cleanPassword, 10);
     const id = uuidv4();
-    db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, username, hashedPassword, 'admin');
+    db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, cleanUsername, hashedPassword, 'admin');
+    const createdUser = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(id);
+    if (!createdUser) {
+        return res.status(500).json({ error: 'Failed to persist admin account' });
+    }
     
-    const token = generateToken({ id, username, role: 'admin' });
+    const token = generateToken(createdUser);
     res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 3600000 });
     res.json({ success: true, message: 'Admin created' });
 });
@@ -67,8 +73,10 @@ app.post('/api/auth/setup', async (req, res) => {
 // Login
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    const cleanUsername = typeof username === 'string' ? username.trim() : '';
+    const cleanPassword = typeof password === 'string' ? password : '';
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
+    if (!user || !(await bcrypt.compare(cleanPassword, user.password_hash))) {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
     const token = generateToken(user);
@@ -94,11 +102,17 @@ app.get('/api/auth/status', (req, res) => {
         const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(decoded.id);
         if (!user) {
             const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+            if (userCount === 0) {
+                res.clearCookie('token');
+            }
             return res.json({ authenticated: false, setupRequired: userCount === 0 });
         }
         res.json({ authenticated: true, user });
     } catch(e) {
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+        if (userCount === 0) {
+            res.clearCookie('token');
+        }
         res.json({ authenticated: false, setupRequired: userCount === 0 });
     }
 });
