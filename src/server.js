@@ -37,7 +37,9 @@ app.get('/', (req, res) => {
     if (!token) return res.redirect('/login.html');
     
     try {
-        jwt.verify(token, SECRET_KEY);
+        const decoded = jwt.verify(token, SECRET_KEY);
+        const user = db.prepare('SELECT id FROM users WHERE id = ?').get(decoded.id);
+        if (!user) return res.redirect('/login.html');
         res.sendFile(path.join(process.cwd(), 'src', 'views', 'index.html'));
     } catch (e) {
         res.redirect('/login.html');
@@ -89,7 +91,12 @@ app.get('/api/auth/status', (req, res) => {
     }
     try {
         const decoded = jwt.verify(token, SECRET_KEY);
-        res.json({ authenticated: true, user: decoded });
+        const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(decoded.id);
+        if (!user) {
+            const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+            return res.json({ authenticated: false, setupRequired: userCount === 0 });
+        }
+        res.json({ authenticated: true, user });
     } catch(e) {
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
         res.json({ authenticated: false, setupRequired: userCount === 0 });
@@ -395,6 +402,7 @@ app.get('/api/system/stats', async (req, res) => {
                 warning: diskWarning,
                 percent: Math.min(100, Math.round((storageUsed / (storageLimit * 1024 * 1024 * 1024)) * 100))
             },
+            storagePath: basePath,
             cpu: {
                 percent: cpuPercent
             },

@@ -103,6 +103,8 @@ async function fetchSystemStats() {
             storageBar.classList.add('bg-purple-500');
         }
         storageBar.style.width = `${data.storage.percent}%`;
+        const storagePathEl = document.getElementById('statStoragePath');
+        if (storagePathEl) storagePathEl.textContent = data.storagePath || '';
         
         // CPU
         document.getElementById('statCpu').textContent = `${data.cpu.percent}%`;
@@ -129,6 +131,10 @@ async function fetchSettings() {
     document.getElementById('set_max_storage').value = data.max_storage_gb;
     document.getElementById('set_retention').value = data.retention_hours;
     document.getElementById('set_cleanup').value = data.cleanup_interval_min;
+    const currentStoragePath = document.getElementById('settingsCurrentStoragePath');
+    if (currentStoragePath) {
+        currentStoragePath.textContent = `Current: ${data.storage_path || '--'}`;
+    }
 }
 
 async function deleteCamera(id) {
@@ -496,6 +502,8 @@ async function handleSaveSettings(e) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
+        await fetchSettings();
+        await fetchSystemStats();
         closeModal('settingsModal');
         alert('Settings saved!');
     } catch(err) {

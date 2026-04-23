@@ -126,6 +126,7 @@
                 <div class="flex-1 min-w-0">
                     <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Storage</div>
                     <div class="text-sm font-bold text-white truncate" id="statStorage">-- / -- GB</div>
+                    <div class="text-[11px] text-gray-400 truncate mt-0.5" id="statStoragePath">--</div>
                     <div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">
                         <div class="bg-purple-500 h-1.5 rounded-full transition-all duration-500" id="statStorageBar" style="width: 0%"></div>
                     </div>
@@ -366,6 +367,7 @@
                             <input type="text" name="storage_path" id="set_storage_path" class="input-field" placeholder="Absolute path (e.g. D:\CCTV)">
                             <button type="button" onclick="checkStoragePath()" class="btn-secondary whitespace-nowrap">Check</button>
                         </div>
+                        <div class="text-[11px] text-gray-400 truncate" id="settingsCurrentStoragePath">Current: --</div>
                     </div>
                     <div class="space-y-1">
                         <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Max Storage (GB)</label>
