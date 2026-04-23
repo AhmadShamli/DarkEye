@@ -36,8 +36,10 @@ class StorageManager {
         console.log(`[Storage] Running cleanup check on ${this.baseDir}...`);
         
         try {
-            const maxStorageGB = parseFloat(db.prepare('SELECT value FROM settings WHERE key = ?').get('max_storage_gb').value);
-            const retentionHours = parseFloat(db.prepare('SELECT value FROM settings WHERE key = ?').get('retention_hours').value);
+            const maxStorageRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('max_storage_gb');
+            const retentionRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('retention_hours');
+            const maxStorageGB = parseFloat(maxStorageRow?.value || '0');
+            const retentionHours = parseFloat(retentionRow?.value || '0');
             
             // Verify baseDir exists
             if (!fs.existsSync(this.baseDir)) return;

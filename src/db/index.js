@@ -56,6 +56,7 @@ async function initDatabase() {
     insertSetting.run('max_storage_gb', '500');
     insertSetting.run('retention_hours', '72');
     insertSetting.run('cleanup_interval_min', '60');
+    insertSetting.run('storage_path', path.join(process.cwd(), 'recordings'));
     
     saveDatabase();
 }
