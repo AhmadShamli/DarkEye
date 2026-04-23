@@ -424,10 +424,10 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', (req, res) => {
     const { max_storage_gb, retention_hours, cleanup_interval_min, storage_path } = req.body;
     const update = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-    if (max_storage_gb) update.run('max_storage_gb', max_storage_gb.toString());
-    if (retention_hours) update.run('retention_hours', retention_hours.toString());
-    if (cleanup_interval_min) update.run('cleanup_interval_min', cleanup_interval_min.toString());
-    if (storage_path) update.run('storage_path', storage_path.toString());
+    if (max_storage_gb !== undefined && max_storage_gb !== null) update.run('max_storage_gb', max_storage_gb.toString());
+    if (retention_hours !== undefined && retention_hours !== null) update.run('retention_hours', retention_hours.toString());
+    if (cleanup_interval_min !== undefined && cleanup_interval_min !== null) update.run('cleanup_interval_min', cleanup_interval_min.toString());
+    if (storage_path !== undefined && storage_path !== null) update.run('storage_path', storage_path.toString());
     storageManager.stop();
     storageManager.start();
     res.json({ success: true });
