@@ -138,21 +138,6 @@ app.use('/api', (req, res, next) => {
     authMiddleware(req, res, next);
 });
 
-(async () => {
-    try {
-        const mediamtx = require('./core/mediamtx-manager');
-        await mediamtx.init();
-        mediamtx.start();
-        
-        await cameraManager.init();
-        const thumbnailManager = require('./core/thumbnail-manager');
-        thumbnailManager.start();
-        storageManager.start();
-    } catch (e) {
-        console.error('Critical Init Error:', e);
-    }
-})();
-
 // DEBUG: Manual HLS Route
 app.get('/hls/:id/:file', (req, res) => {
     const { id, file } = req.params;
@@ -656,11 +641,24 @@ app.post('/api/cameras/:id/talk/audio', express.raw({ type: 'application/octet-s
     res.json({ success });
 });
 
-db.init().then(() => {
-    app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-    });
-}).catch(err => {
-    console.error('Failed to initialize database:', err);
-    process.exit(1);
-});
+(async () => {
+    try {
+        await db.init();
+
+        const mediamtx = require('./core/mediamtx-manager');
+        await mediamtx.init();
+        mediamtx.start();
+        
+        await cameraManager.init();
+        const thumbnailManager = require('./core/thumbnail-manager');
+        thumbnailManager.start();
+        storageManager.start();
+
+        app.listen(PORT, () => {
+            console.log(`Server running on http://localhost:${PORT}`);
+        });
+    } catch (e) {
+        console.error('Critical Init Error:', e);
+        process.exit(1);
+    }
+})();
