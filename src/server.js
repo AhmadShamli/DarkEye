@@ -60,7 +60,7 @@ app.post('/api/auth/setup', async (req, res) => {
     const hashedPassword = await bcrypt.hash(cleanPassword, 10);
     const id = uuidv4();
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, cleanUsername, hashedPassword, 'admin');
-    const createdUser = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(id);
+    const createdUser = db.prepare('SELECT id, username, role FROM users WHERE username = ?').get(cleanUsername);
     if (!createdUser) {
         return res.status(500).json({ error: 'Failed to persist admin account' });
     }
