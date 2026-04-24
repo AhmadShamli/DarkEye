@@ -53,6 +53,7 @@ app.post('/api/auth/setup', async (req, res) => {
     const { username, password } = req.body;
     const cleanUsername = typeof username === 'string' ? username.trim() : '';
     const cleanPassword = typeof password === 'string' ? password : '';
+    console.log(`[Auth] Setup request username="${cleanUsername}" len=${cleanUsername.length}, passwordLen=${cleanPassword.length}`);
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
     if (userCount > 0) return res.status(403).json({ error: 'Setup already completed.' });
     if (!cleanUsername || !cleanPassword) return res.status(400).json({ error: 'Missing fields' });
@@ -75,6 +76,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     const cleanUsername = typeof username === 'string' ? username.trim() : '';
     const cleanPassword = typeof password === 'string' ? password : '';
+    console.log(`[Auth] Login request username="${cleanUsername}" len=${cleanUsername.length}, passwordLen=${cleanPassword.length}`);
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
     if (!user || !(await bcrypt.compare(cleanPassword, user.password_hash))) {
         return res.status(401).json({ error: 'Invalid credentials' });
