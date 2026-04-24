@@ -14,7 +14,14 @@ let SQL;
 
 async function initDatabase() {
     SQL = await initSqlJs();
-    const fileBuffer = fs.existsSync(dbFile) ? fs.readFileSync(dbFile) : undefined;
+    const dbExists = fs.existsSync(dbFile);
+    if (!dbExists) {
+        console.log(`[DB] Database file not found: ${dbFile}`);
+    } else {
+        console.log(`[DB] Using existing database file: ${dbFile}`);
+    }
+
+    const fileBuffer = dbExists ? fs.readFileSync(dbFile) : undefined;
     db = new SQL.Database(fileBuffer);
     
     db.exec(`
@@ -59,6 +66,10 @@ async function initDatabase() {
     insertSetting.run('storage_path', path.join(process.cwd(), 'recordings'));
     
     saveDatabase();
+
+    if (!dbExists && fs.existsSync(dbFile)) {
+        console.log(`[DB] Database file created: ${dbFile}`);
+    }
 }
 
 function saveDatabase() {
