@@ -12,6 +12,10 @@ ExecStart=/usr/bin/npm start
 # Environment variables if needed
 Environment=NODE_ENV=production
 Environment=PORT=3000
+# Keep service output out of any interactive terminal session.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=darkeye
 
 # Auto-restart config
 Restart=always
