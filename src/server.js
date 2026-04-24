@@ -14,6 +14,8 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const sqlString = (value) => `'${String(value).replace(/'/g, "''")}'`;
+
 app.set('trust proxy', 1); // Trust Nginx/Reverse Proxy
 app.use(cors());
 app.use(bodyParser.json());
@@ -61,7 +63,7 @@ app.post('/api/auth/setup', async (req, res) => {
     const hashedPassword = await bcrypt.hash(cleanPassword, 10);
     const id = uuidv4();
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, cleanUsername, hashedPassword, 'admin');
-    const usersAfterSetup = db.prepare('SELECT id, username, role FROM users').all();
+    const usersAfterSetup = db.query('SELECT id, username, role FROM users');
     console.log(`[Auth] Setup complete for username="${cleanUsername}" users=${usersAfterSetup.map(u => `${u.username}:${u.role}`).join(', ') || 'none'}`);
 
     const createdUser = { id, username: cleanUsername, role: 'admin' };
@@ -76,7 +78,8 @@ app.post('/api/auth/login', async (req, res) => {
     const cleanUsername = typeof username === 'string' ? username.trim() : '';
     const cleanPassword = typeof password === 'string' ? password : '';
     console.log(`[Auth] Login request username="${cleanUsername}" len=${cleanUsername.length}, passwordLen=${cleanPassword.length}`);
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
+    const userRows = db.query(`SELECT id, username, password_hash, role FROM users WHERE username = ${sqlString(cleanUsername)} LIMIT 1`);
+    const user = userRows[0];
     if (!user) {
         console.log(`[Auth] Login failed: user not found for "${cleanUsername}"`);
         return res.status(401).json({ error: 'Invalid credentials' });

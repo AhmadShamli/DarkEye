@@ -105,6 +105,13 @@ function exec(sql) {
     saveDatabase();
 }
 
+function query(sql) {
+    const results = db.exec(sql);
+    if (!results.length) return [];
+    const { columns, values } = results[0];
+    return values.map(row => Object.fromEntries(columns.map((col, idx) => [col, row[idx]])));
+}
+
 function prepare(sql) {
     const stmt = db.prepare(sql);
     return {
@@ -138,6 +145,7 @@ function prepare(sql) {
 module.exports = {
     init: initDatabase,
     exec,
+    query,
     prepare,
     getDbFilePath,
     testDatabase
