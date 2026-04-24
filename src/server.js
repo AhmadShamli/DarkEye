@@ -76,7 +76,14 @@ app.post('/api/auth/login', async (req, res) => {
     const cleanPassword = typeof password === 'string' ? password : '';
     console.log(`[Auth] Login request username="${cleanUsername}" len=${cleanUsername.length}, passwordLen=${cleanPassword.length}`);
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
-    if (!user || !(await bcrypt.compare(cleanPassword, user.password_hash))) {
+    if (!user) {
+        console.log(`[Auth] Login failed: user not found for "${cleanUsername}"`);
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const passwordOk = await bcrypt.compare(cleanPassword, user.password_hash);
+    console.log(`[Auth] Login lookup found id=${user.id} role=${user.role}, passwordMatch=${passwordOk}`);
+    if (!passwordOk) {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
     const token = generateToken(user);
