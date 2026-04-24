@@ -450,7 +450,10 @@ app.post('/api/settings', (req, res) => {
     if (max_storage_gb !== undefined && max_storage_gb !== null) update.run('max_storage_gb', max_storage_gb.toString());
     if (retention_hours !== undefined && retention_hours !== null) update.run('retention_hours', retention_hours.toString());
     if (cleanup_interval_min !== undefined && cleanup_interval_min !== null) update.run('cleanup_interval_min', cleanup_interval_min.toString());
-    if (storage_path !== undefined && storage_path !== null) update.run('storage_path', storage_path.toString());
+    if (storage_path !== undefined && storage_path !== null) {
+        const cleanStoragePath = storage_path.toString().trim();
+        if (cleanStoragePath) update.run('storage_path', cleanStoragePath);
+    }
     storageManager.stop();
     storageManager.start();
     res.json({ success: true });

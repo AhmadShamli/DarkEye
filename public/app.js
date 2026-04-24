@@ -131,10 +131,14 @@ async function fetchSettings() {
     document.getElementById('set_max_storage').value = data.max_storage_gb;
     document.getElementById('set_retention').value = data.retention_hours;
     document.getElementById('set_cleanup').value = data.cleanup_interval_min;
-    const currentStoragePath = document.getElementById('settingsCurrentStoragePath');
-    if (currentStoragePath) {
-        currentStoragePath.textContent = `Current: ${data.storage_path || '--'}`;
-    }
+    const setCurrentText = (id, value, fallback = '--') => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = `Current: ${value !== undefined && value !== null && value !== '' ? value : fallback}`;
+    };
+    setCurrentText('settingsCurrentStoragePath', data.storage_path);
+    setCurrentText('settingsCurrentMaxStorage', data.max_storage_gb);
+    setCurrentText('settingsCurrentRetention', data.retention_hours);
+    setCurrentText('settingsCurrentCleanup', data.cleanup_interval_min);
 }
 
 async function deleteCamera(id) {

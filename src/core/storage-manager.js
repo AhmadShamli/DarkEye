@@ -9,6 +9,13 @@ class StorageManager {
     }
 
     start() {
+        // Refresh storage path before the first cleanup run so the live path matches saved settings.
+        try {
+            const row = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
+            if (row?.value) this.baseDir = row.value;
+            else this.baseDir = path.join(process.cwd(), 'recordings');
+        } catch (e) {}
+
         // Load interval from DB
         const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('cleanup_interval_min');
         const intervalMin = row ? parseInt(row.value) : 60;
