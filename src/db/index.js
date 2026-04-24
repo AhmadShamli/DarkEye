@@ -118,7 +118,6 @@ function prepare(sql) {
         run: (...params) => {
             stmt.run(params);
             saveDatabase();
-            stmt.free();
         },
         get: (...params) => {
             stmt.bind(params);

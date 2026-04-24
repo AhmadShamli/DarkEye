@@ -441,6 +441,10 @@ app.get('/api/settings', (req, res) => {
     const settings = db.prepare('SELECT * FROM settings').all();
     const result = {};
     settings.forEach(s => result[s.key] = s.value);
+    result.max_storage_gb = result.max_storage_gb || '500';
+    result.retention_hours = result.retention_hours || '72';
+    result.cleanup_interval_min = result.cleanup_interval_min || '60';
+    result.storage_path = result.storage_path || path.join(process.cwd(), 'recordings');
     res.json(result);
 });
 
