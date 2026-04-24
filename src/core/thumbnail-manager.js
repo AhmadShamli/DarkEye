@@ -44,8 +44,22 @@ class ThumbnailManager {
             if (row) basePath = row.value;
         } catch(e) {}
         
+        if (!fs.existsSync(basePath)) {
+            try {
+                fs.mkdirSync(basePath, { recursive: true });
+            } catch (e) {
+                console.error(`[ThumbnailMgr] Failed to create storage path ${basePath}:`, e.message);
+                return;
+            }
+        }
+
         const camDir = path.join(basePath, cam.id);
-        if (!fs.existsSync(camDir)) fs.mkdirSync(camDir, { recursive: true });
+        try {
+            fs.mkdirSync(camDir, { recursive: true });
+        } catch (e) {
+            console.error(`[ThumbnailMgr] Failed to create camera dir ${camDir}:`, e.message);
+            return;
+        }
 
         const thumbPath = path.join(camDir, 'thumbnail.jpg');
 
