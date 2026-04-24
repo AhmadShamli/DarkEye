@@ -116,12 +116,12 @@ function prepare(sql) {
     const stmt = db.prepare(sql);
     return {
         run: (...params) => {
-            stmt.run(...params);
+            stmt.run(params);
             saveDatabase();
             stmt.free();
         },
         get: (...params) => {
-            stmt.bind(...params);
+            stmt.bind(params);
             if (stmt.step()) {
                 const row = stmt.getAsObject();
                 stmt.free();
@@ -132,7 +132,7 @@ function prepare(sql) {
         },
         all: (...params) => {
             const rows = [];
-            stmt.bind(...params);
+            stmt.bind(params);
             while (stmt.step()) {
                 rows.push(stmt.getAsObject());
             }
