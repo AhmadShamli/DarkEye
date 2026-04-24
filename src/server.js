@@ -450,13 +450,20 @@ app.get('/api/settings', (req, res) => {
 
 app.post('/api/settings', (req, res) => {
     const { max_storage_gb, retention_hours, cleanup_interval_min, storage_path } = req.body;
-    const update = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-    if (max_storage_gb !== undefined && max_storage_gb !== null) update.run('max_storage_gb', max_storage_gb.toString());
-    if (retention_hours !== undefined && retention_hours !== null) update.run('retention_hours', retention_hours.toString());
-    if (cleanup_interval_min !== undefined && cleanup_interval_min !== null) update.run('cleanup_interval_min', cleanup_interval_min.toString());
+    if (max_storage_gb !== undefined && max_storage_gb !== null) {
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('max_storage_gb', max_storage_gb.toString());
+    }
+    if (retention_hours !== undefined && retention_hours !== null) {
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('retention_hours', retention_hours.toString());
+    }
+    if (cleanup_interval_min !== undefined && cleanup_interval_min !== null) {
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('cleanup_interval_min', cleanup_interval_min.toString());
+    }
     if (storage_path !== undefined && storage_path !== null) {
         const cleanStoragePath = storage_path.toString().trim();
-        if (cleanStoragePath) update.run('storage_path', cleanStoragePath);
+        if (cleanStoragePath) {
+            db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('storage_path', cleanStoragePath);
+        }
     }
     storageManager.stop();
     storageManager.start();
