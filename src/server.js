@@ -666,6 +666,9 @@ app.post('/api/cameras/:id/talk/audio', express.raw({ type: 'application/octet-s
 (async () => {
     try {
         await db.init();
+        const dbInfo = db.testDatabase();
+        console.log(`[DB] Using database: ${db.getDbFilePath()}`);
+        console.log(`[DB] Test query ok: ${dbInfo.ok}, users: ${dbInfo.userCount}, file exists: ${dbInfo.fileExists}, size: ${dbInfo.fileSize} bytes`);
 
         const mediamtx = require('./core/mediamtx-manager');
         await mediamtx.init();

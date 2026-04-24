@@ -69,6 +69,26 @@ function saveDatabase() {
     }
 }
 
+function getDbFilePath() {
+    return dbFile;
+}
+
+function testDatabase() {
+    if (!db) {
+        throw new Error('Database not initialized');
+    }
+
+    const row = prepare('SELECT 1 AS ok').get();
+    const userCount = prepare('SELECT COUNT(*) AS count FROM users').get();
+
+    return {
+        ok: row?.ok === 1,
+        userCount: userCount?.count ?? null,
+        fileExists: fs.existsSync(dbFile),
+        fileSize: fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0
+    };
+}
+
 function exec(sql) {
     db.exec(sql);
     saveDatabase();
@@ -106,5 +126,7 @@ function prepare(sql) {
 module.exports = {
     init: initDatabase,
     exec,
-    prepare
+    prepare,
+    getDbFilePath,
+    testDatabase
 };
