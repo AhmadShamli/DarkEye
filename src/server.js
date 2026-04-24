@@ -61,7 +61,8 @@ app.post('/api/auth/setup', async (req, res) => {
     const hashedPassword = await bcrypt.hash(cleanPassword, 10);
     const id = uuidv4();
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, cleanUsername, hashedPassword, 'admin');
-    console.log(`[Auth] Setup complete for username="${cleanUsername}"`);
+    const usersAfterSetup = db.prepare('SELECT id, username, role FROM users').all();
+    console.log(`[Auth] Setup complete for username="${cleanUsername}" users=${usersAfterSetup.map(u => `${u.username}:${u.role}`).join(', ') || 'none'}`);
 
     const createdUser = { id, username: cleanUsername, role: 'admin' };
     const token = generateToken(createdUser);
