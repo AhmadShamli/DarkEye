@@ -1,20 +1,28 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const db = require('../db');
+const { getActiveStoragePath, getTemporaryStorageLimitBytes, getTempRootPath } = require('./storage-path');
 
 class StorageManager {
     constructor() {
         this.baseDir = path.join(process.cwd(), 'recordings');
         this.interval = null;
+        this.tempLimitBytes = 0;
     }
 
     start() {
-        // Refresh storage path before the first cleanup run so the live path matches saved settings.
-        try {
-            const row = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
-            if (row?.value) this.baseDir = row.value;
-            else this.baseDir = path.join(process.cwd(), 'recordings');
-        } catch (e) {}
+        const storage = getActiveStoragePath();
+        this.baseDir = storage.path;
+        this.isFallback = storage.isFallback;
+        this.tempLimitBytes = this.isFallback ? getTemporaryStorageLimitBytes() : 0;
+        if (storage.isFallback) {
+            console.warn(`[Storage] ${storage.reason}`);
+            console.warn(`[Storage] Temporary storage limit set to ${(this.tempLimitBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+        } else {
+            console.log(`[Storage] Using configured storage path: ${this.baseDir}`);
+            this.migrateTempStorage(storage.path);
+        }
 
         // Load interval from DB
         const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('cleanup_interval_min');
@@ -33,12 +41,22 @@ class StorageManager {
     }
 
     async cleanup() {
-        // Refresh baseDir from settings
-        try {
-             const row = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
-             if (row) this.baseDir = row.value;
-             else this.baseDir = path.join(process.cwd(), 'recordings');
-        } catch(e) {}
+        const storage = getActiveStoragePath();
+        const wasFallback = this.isFallback;
+        this.baseDir = storage.path;
+        this.isFallback = storage.isFallback;
+        if (!this.isFallback) {
+            this.tempLimitBytes = 0;
+            if (wasFallback) {
+                console.log(`[Storage] Storage recovered. Switching back to ${this.baseDir}`);
+                this.migrateTempStorage(this.baseDir);
+            } else {
+                this.migrateTempStorage(this.baseDir);
+            }
+        } else if (!this.tempLimitBytes) {
+            this.tempLimitBytes = getTemporaryStorageLimitBytes();
+            console.warn(`[Storage] Temporary storage limit locked at ${(this.tempLimitBytes / (1024 * 1024 * 1024)).toFixed(2)} GB for this fallback session`);
+        }
 
         console.log(`[Storage] Running cleanup check on ${this.baseDir}...`);
         
@@ -82,18 +100,22 @@ class StorageManager {
             }
 
             // 2. Retention by Size
-            if (maxStorageGB && maxStorageGB > 0) {
-                const maxBytes = maxStorageGB * 1024 * 1024 * 1024;
+            const maxBytes = this.isFallback ? this.tempLimitBytes : (maxStorageGB && maxStorageGB > 0 ? maxStorageGB * 1024 * 1024 * 1024 : 0);
+            if (maxBytes > 0) {
                 let totalSize = allFiles.reduce((acc, f) => acc + f.size, 0);
+                const cleanupThreshold = this.isFallback ? Math.floor(maxBytes * 0.7) : maxBytes;
                 
-                console.log(`[Storage] Current size: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB / Limit: ${maxStorageGB} GB`);
+                const limitLabel = this.isFallback
+                    ? `${(maxBytes / (1024 * 1024 * 1024)).toFixed(2)} GB (temp)`
+                    : `${maxStorageGB} GB`;
+                console.log(`[Storage] Current size: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB / Limit: ${limitLabel}`);
 
-                if (totalSize > maxBytes) {
+                if (totalSize > cleanupThreshold) {
                     // Sort by oldest first
                     allFiles.sort((a, b) => a.mtime - b.mtime);
 
                     for (const file of allFiles) {
-                        if (totalSize <= maxBytes) break;
+                        if (totalSize <= cleanupThreshold) break;
                         
                         console.log(`[Storage] Quota exceeded. Deleting: ${path.basename(file.path)}`);
                         try {
@@ -109,6 +131,84 @@ class StorageManager {
         } catch (e) {
             console.error('[Storage] Cleanup failed:', e);
         }
+    }
+
+    migrateTempStorage(destinationRoot) {
+        const tempRoot = getTempRootPath();
+        if (!fs.existsSync(tempRoot)) return;
+        if (!fs.existsSync(destinationRoot)) {
+            try {
+                fs.mkdirSync(destinationRoot, { recursive: true });
+            } catch (e) {
+                console.error(`[Storage] Failed to prepare recovery destination ${destinationRoot}:`, e.message);
+                return;
+            }
+        }
+
+        const tempCameras = this.getDirectories(tempRoot);
+        if (tempCameras.length === 0) return;
+
+        console.log(`[Storage] Migrating temporary files from ${tempRoot} to ${destinationRoot}...`);
+
+        const now = Date.now();
+        const stableAgeMs = 30 * 1000;
+        let movedCount = 0;
+        let pendingCount = 0;
+
+        for (const camId of tempCameras) {
+            const fromCamDir = path.join(tempRoot, camId);
+            const toCamDir = path.join(destinationRoot, camId);
+            try {
+                fs.mkdirSync(toCamDir, { recursive: true });
+                const result = this._moveDirectoryContents(fromCamDir, toCamDir, now, stableAgeMs);
+                movedCount += result.moved;
+                pendingCount += result.pending;
+            } catch (e) {
+                console.error(`[Storage] Failed to migrate camera ${camId}:`, e.message);
+            }
+        }
+
+        console.log(`[Storage] Migration result: moved=${movedCount}, pending=${pendingCount}`);
+
+        try {
+            if (this.getDirectories(tempRoot).length === 0) {
+                fs.rmSync(tempRoot, { recursive: true, force: true });
+            }
+        } catch (e) {
+            console.error(`[Storage] Failed to clean temporary storage root ${tempRoot}:`, e.message);
+        }
+    }
+
+    _moveDirectoryContents(fromDir, toDir, now, stableAgeMs) {
+        if (!fs.existsSync(fromDir)) return { moved: 0, pending: 0 };
+        const entries = fs.readdirSync(fromDir, { withFileTypes: true });
+        let moved = 0;
+        let pending = 0;
+        for (const entry of entries) {
+            const fromPath = path.join(fromDir, entry.name);
+            const toPath = path.join(toDir, entry.name);
+            try {
+                if (entry.isDirectory()) {
+                    fs.mkdirSync(toPath, { recursive: true });
+                    const result = this._moveDirectoryContents(fromPath, toPath, now, stableAgeMs);
+                    moved += result.moved;
+                    pending += result.pending;
+                    fs.rmSync(fromPath, { recursive: true, force: true });
+                } else {
+                    const stat = fs.statSync(fromPath);
+                    const ageMs = now - stat.mtimeMs;
+                    if (ageMs < stableAgeMs) {
+                        pending += 1;
+                        continue;
+                    }
+                    fs.renameSync(fromPath, toPath);
+                    moved += 1;
+                }
+            } catch (e) {
+                console.error(`[Storage] Failed to move ${fromPath} -> ${toPath}:`, e.message);
+            }
+        }
+        return { moved, pending };
     }
 
     _gatherFiles(dir, fileList) {

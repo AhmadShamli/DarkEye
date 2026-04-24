@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const ffmpegManager = require('./ffmpeg-manager');
 const db = require('../db'); // Require DB
+const { getActiveStoragePath } = require('./storage-path');
 
 class Recorder {
     constructor(cameraConfig) {
@@ -29,19 +30,19 @@ class Recorder {
         const { id, segment_duration, timelapse_enabled, record_mode } = this.config;
         const inputUrl = `rtsp://127.0.0.1:8554/live/${id}`;
         
-        let basePath = path.join(process.cwd(), 'recordings');
-        try {
-             // Query DB directly (db is already required and initialized)
-             const settings = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
-             if (settings && settings.value) {
-                 basePath = settings.value;
-             }
-        } catch(e) {
-            console.error(`[Recorder ${id}] Failed to get storage path from DB:`, e.message);
+        const storage = getActiveStoragePath();
+        let basePath = storage.path;
+        if (storage.isFallback) {
+            console.warn(`[Recorder ${id}] ${storage.reason}`);
         }
         
         const recordingPath = path.join(basePath, id);
-        if (!fs.existsSync(recordingPath)) fs.mkdirSync(recordingPath, { recursive: true });
+        try {
+            fs.mkdirSync(recordingPath, { recursive: true });
+        } catch (e) {
+            console.error(`[Recorder ${id}] Failed to create recording path ${recordingPath}:`, e.message);
+            return;
+        }
 
         console.log(`[Recorder ${id}] Connecting to ${inputUrl}...`);
 

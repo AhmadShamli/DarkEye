@@ -124,7 +124,10 @@
                     <i class="fa-solid fa-hard-drive"></i>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Storage</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold flex items-center gap-2">
+                        <span>Storage</span>
+                        <span id="statStorageMode" class="hidden text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-300 border border-yellow-500/30">Fallback</span>
+                    </div>
                     <div class="text-sm font-bold text-white truncate" id="statStorage">-- / -- GB</div>
                     <div class="text-[11px] text-gray-400 truncate mt-0.5" id="statStoragePath">--</div>
                     <div class="w-full bg-gray-700 rounded-full h-1.5 mt-1">
@@ -368,6 +371,7 @@
                             <button type="button" onclick="checkStoragePath()" class="btn-secondary whitespace-nowrap">Check</button>
                         </div>
                         <div class="text-[11px] text-gray-400 truncate" id="settingsCurrentStoragePath">Current: --</div>
+                        <div id="settingsStorageFallback" class="hidden text-[11px] text-yellow-300">Using temporary memory storage.</div>
                     </div>
                     <div class="space-y-1">
                         <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Max Storage (GB)</label>

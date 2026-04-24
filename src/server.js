@@ -10,6 +10,7 @@ const storageManager = require('./core/storage-manager');
 const onvifManager = require('./core/onvif');
 const audioManager = require('./core/audio-manager');
 const { v4: uuidv4 } = require('uuid');
+const { getActiveStoragePath } = require('./core/storage-path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -306,7 +307,8 @@ let lastNetworkTime = Date.now();
 app.get('/api/system/stats', async (req, res) => {
     try {
         // Storage usage
-        const basePath = getStoragePath();
+        const activeStorage = getActiveStoragePath();
+        const basePath = activeStorage.path;
         let storageUsed = 0;
         
         if (fs.existsSync(basePath)) {
@@ -418,6 +420,7 @@ app.get('/api/system/stats', async (req, res) => {
                 percent: Math.min(100, Math.round((storageUsed / (storageLimit * 1024 * 1024 * 1024)) * 100))
             },
             storagePath: basePath,
+            storageFallback: activeStorage.isFallback,
             cpu: {
                 percent: cpuPercent
             },
@@ -483,8 +486,7 @@ app.post('/api/settings/check-path', (req, res) => {
 
 // helper 
 function getStoragePath() {
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
-    return row ? row.value : path.join(process.cwd(), 'recordings');
+    return getActiveStoragePath().path;
 }
 
 app.get('/api/recordings/:id', (req, res) => {

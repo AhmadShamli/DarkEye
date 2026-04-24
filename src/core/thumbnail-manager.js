@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const ffmpegManager = require('./ffmpeg-manager');
+const { getActiveStoragePath } = require('./storage-path');
 
 class ThumbnailManager {
     constructor() {
@@ -37,20 +38,17 @@ class ThumbnailManager {
         // We pull from MediaMTX Proxy for speed and stability
         const inputUrl = `rtsp://127.0.0.1:8554/live/${cam.id}`;
         
-        // Get storage path
-        let basePath = path.join(process.cwd(), 'recordings');
+        const storage = getActiveStoragePath();
+        const basePath = storage.path;
+        if (storage.isFallback) {
+            console.warn(`[ThumbnailMgr] ${storage.reason}`);
+        }
+
         try {
-            const row = db.prepare("SELECT value FROM settings WHERE key = 'storage_path'").get();
-            if (row) basePath = row.value;
-        } catch(e) {}
-        
-        if (!fs.existsSync(basePath)) {
-            try {
-                fs.mkdirSync(basePath, { recursive: true });
-            } catch (e) {
-                console.error(`[ThumbnailMgr] Failed to create storage path ${basePath}:`, e.message);
-                return;
-            }
+            fs.mkdirSync(basePath, { recursive: true });
+        } catch (e) {
+            console.error(`[ThumbnailMgr] Failed to create storage path ${basePath}:`, e.message);
+            return;
         }
 
         const camDir = path.join(basePath, cam.id);
