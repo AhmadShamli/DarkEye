@@ -4,6 +4,7 @@ const fs = require('fs');
 const db = require('../db');
 const ffmpegManager = require('./ffmpeg-manager');
 const { getActiveStoragePath } = require('./storage-path');
+const realtimeBus = require('./realtime-bus');
 
 class ThumbnailManager {
     constructor() {
@@ -74,7 +75,13 @@ class ThumbnailManager {
             ])
             .output(thumbPath)
             .on('end', () => {
-                // console.log(`[ThumbnailMgr] Updated ${cam.id}`);
+                try {
+                    const stat = fs.statSync(thumbPath);
+                    realtimeBus.emit('thumbnail-updated', {
+                        cameraId: cam.id,
+                        thumbnailVersion: stat.mtimeMs
+                    });
+                } catch (e) { }
             })
             .on('error', (err) => {
                 // Silent error, will retry next loop

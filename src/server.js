@@ -11,6 +11,7 @@ const onvifManager = require('./core/onvif');
 const audioManager = require('./core/audio-manager');
 const { v4: uuidv4 } = require('uuid');
 const { getActiveStoragePath } = require('./core/storage-path');
+const realtimeBus = require('./core/realtime-bus');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -180,9 +181,14 @@ app.get('/api/cameras', (req, res) => {
     const cameras = db.prepare('SELECT * FROM cameras').all();
     const camsWithStatus = cameras.map(c => {
         const rec = cameraManager.getRecorder(c.id);
-        return { ...c, is_recording: rec ? rec.isRecording : false };
+        return { ...c, is_recording: rec ? rec.isRecording : false, thumbnail_version: getThumbnailVersion(c.id) };
     });
     res.json(camsWithStatus);
+});
+
+app.get('/api/cameras/thumbnail-versions', (req, res) => {
+    const cameras = db.prepare('SELECT id FROM cameras').all();
+    res.json(cameras.map(cam => ({ id: cam.id, thumbnail_version: getThumbnailVersion(cam.id) })));
 });
 
 app.post('/api/cameras', (req, res) => {
@@ -303,14 +309,42 @@ app.get('/api/system/cloudflare', (req, res) => {
 // Track network for rate calculation
 let lastNetworkStats = null;
 let lastNetworkTime = Date.now();
+let cachedSystemStats = null;
+let cachedSystemStatsAt = 0;
+let cachedSystemStatsPromise = null;
+const SYSTEM_STATS_CACHE_MS = 5000;
+const sseClients = new Set();
+let statsBroadcastTimer = null;
 
-app.get('/api/system/stats', async (req, res) => {
+function getThumbnailVersion(camId) {
+    const thumbPath = path.join(getActiveStoragePath().path, camId, 'thumbnail.jpg');
     try {
-        // Storage usage
+        return fs.existsSync(thumbPath) ? fs.statSync(thumbPath).mtimeMs : 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
+function sendSse(res, event, data) {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+async function collectSystemStats(force = false) {
+    const now = Date.now();
+    if (!force && cachedSystemStats && (now - cachedSystemStatsAt) < SYSTEM_STATS_CACHE_MS) {
+        return cachedSystemStats;
+    }
+
+    if (cachedSystemStatsPromise) {
+        return cachedSystemStatsPromise;
+    }
+
+    cachedSystemStatsPromise = (async () => {
         const activeStorage = getActiveStoragePath();
         const basePath = activeStorage.path;
         let storageUsed = 0;
-        
+
         if (fs.existsSync(basePath)) {
             const getDirSize = (dirPath) => {
                 let size = 0;
@@ -325,39 +359,34 @@ app.get('/api/system/stats', async (req, res) => {
                             size += stat.size;
                         }
                     }
-                } catch (e) { /* ignore errors */ }
+                } catch (e) { }
                 return size;
             };
             storageUsed = getDirSize(basePath);
         }
-        
-        // Get storage limit from settings
-        const storageLimitRow = db.prepare("SELECT value FROM settings WHERE key = 'max_storage_gb'").get();
-        const storageLimit = storageLimitRow ? parseFloat(storageLimitRow.value) : 100; // Default 100GB
 
-        // CPU usage using systeminformation
+        const storageLimitRow = db.prepare("SELECT value FROM settings WHERE key = 'max_storage_gb'").get();
+        const storageLimit = storageLimitRow ? parseFloat(storageLimitRow.value) : 100;
+
         const cpuLoad = await si.currentLoad();
         const cpuPercent = Math.round(cpuLoad.currentLoad);
 
-        // Memory usage
         const totalMem = os.totalmem();
         const freeMem = os.freemem();
         const usedMem = totalMem - freeMem;
         const memPercent = Math.round((usedMem / totalMem) * 100);
 
-        // Network usage using systeminformation
         let rxRate = 0, txRate = 0;
         try {
             const networkStats = await si.networkStats();
-            const now = Date.now();
-            
+            const sampleTime = Date.now();
+
             if (lastNetworkStats && networkStats.length > 0) {
-                const elapsed = (now - lastNetworkTime) / 1000; // seconds
+                const elapsed = (sampleTime - lastNetworkTime) / 1000;
                 if (elapsed > 0) {
-                    // Sum all interfaces
                     let totalRx = 0, totalTx = 0;
                     let lastTotalRx = 0, lastTotalTx = 0;
-                    
+
                     networkStats.forEach((iface, i) => {
                         totalRx += iface.rx_bytes || 0;
                         totalTx += iface.tx_bytes || 0;
@@ -366,31 +395,25 @@ app.get('/api/system/stats', async (req, res) => {
                             lastTotalTx += lastNetworkStats[i].tx_bytes || 0;
                         }
                     });
-                    
-                    rxRate = Math.round((totalRx - lastTotalRx) / elapsed / 1024); // KB/s
-                    txRate = Math.round((totalTx - lastTotalTx) / elapsed / 1024); // KB/s
-                    
-                    // Ensure non-negative
-                    rxRate = Math.max(0, rxRate);
-                    txRate = Math.max(0, txRate);
+
+                    rxRate = Math.max(0, Math.round((totalRx - lastTotalRx) / elapsed / 1024));
+                    txRate = Math.max(0, Math.round((totalTx - lastTotalTx) / elapsed / 1024));
                 }
             }
-            
+
             lastNetworkStats = networkStats;
-            lastNetworkTime = now;
+            lastNetworkTime = sampleTime;
         } catch (e) {
             console.error('Network stats error:', e.message);
         }
 
-        // Get actual disk space for storage path
         let diskAvailable = 0;
         let diskWarning = false;
         try {
             const disks = await si.fsSize();
-            // Find the disk that contains the storage path
             const normalizedPath = path.resolve(basePath).toLowerCase();
             let matchedDisk = null;
-            
+
             for (const disk of disks) {
                 const mount = disk.mount.toLowerCase();
                 if (normalizedPath.startsWith(mount)) {
@@ -399,10 +422,9 @@ app.get('/api/system/stats', async (req, res) => {
                     }
                 }
             }
-            
+
             if (matchedDisk) {
-                diskAvailable = Math.round(matchedDisk.available / (1024 * 1024 * 1024) * 100) / 100; // GB
-                // Check if configured limit exceeds available space
+                diskAvailable = Math.round(matchedDisk.available / (1024 * 1024 * 1024) * 100) / 100;
                 if (storageLimit > diskAvailable + (storageUsed / (1024 * 1024 * 1024))) {
                     diskWarning = true;
                 }
@@ -411,9 +433,9 @@ app.get('/api/system/stats', async (req, res) => {
             console.error('Disk space check error:', e.message);
         }
 
-        res.json({
+        const stats = {
             storage: {
-                used: Math.round(storageUsed / (1024 * 1024 * 1024) * 100) / 100, // GB
+                used: Math.round(storageUsed / (1024 * 1024 * 1024) * 100) / 100,
                 limit: storageLimit,
                 available: diskAvailable,
                 warning: diskWarning,
@@ -421,22 +443,99 @@ app.get('/api/system/stats', async (req, res) => {
             },
             storagePath: basePath,
             storageFallback: activeStorage.isFallback,
-            cpu: {
-                percent: cpuPercent
-            },
+            cpu: { percent: cpuPercent },
             memory: {
-                used: Math.round(usedMem / (1024 * 1024 * 1024) * 100) / 100, // GB
-                total: Math.round(totalMem / (1024 * 1024 * 1024) * 100) / 100, // GB
+                used: Math.round(usedMem / (1024 * 1024 * 1024) * 100) / 100,
+                total: Math.round(totalMem / (1024 * 1024 * 1024) * 100) / 100,
                 percent: memPercent
             },
-            network: {
-                rxRate: rxRate, // KB/s
-                txRate: txRate  // KB/s
+            network: { rxRate, txRate }
+        };
+
+        cachedSystemStats = stats;
+        cachedSystemStatsAt = Date.now();
+        return stats;
+    })();
+
+    try {
+        return await cachedSystemStatsPromise;
+    } finally {
+        cachedSystemStatsPromise = null;
+    }
+}
+
+function startStatsBroadcast() {
+    if (statsBroadcastTimer || sseClients.size === 0) return;
+    statsBroadcastTimer = setInterval(async () => {
+        if (sseClients.size === 0) {
+            clearInterval(statsBroadcastTimer);
+            statsBroadcastTimer = null;
+            return;
+        }
+
+        try {
+            const stats = await collectSystemStats(true);
+            for (const client of sseClients) {
+                try {
+                    sendSse(client, 'stats', stats);
+                } catch (e) {
+                    sseClients.delete(client);
+                }
             }
-        });
+        } catch (e) {
+            console.error('[SSE] Failed to broadcast stats:', e.message);
+        }
+    }, 5000);
+}
+
+function stopStatsBroadcast() {
+    if (statsBroadcastTimer && sseClients.size === 0) {
+        clearInterval(statsBroadcastTimer);
+        statsBroadcastTimer = null;
+    }
+}
+
+realtimeBus.on('thumbnail-updated', (payload) => {
+    for (const client of sseClients) {
+        try {
+            sendSse(client, 'thumbnail-updated', payload);
+        } catch (e) {
+            sseClients.delete(client);
+        }
+    }
+});
+
+app.get('/api/system/stats', async (req, res) => {
+    try {
+        res.json(await collectSystemStats());
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+app.get('/api/events', async (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
+    });
+    res.write('retry: 5000\n\n');
+
+    sseClients.add(res);
+    startStatsBroadcast();
+
+    try {
+        const stats = await collectSystemStats();
+        sendSse(res, 'stats', stats);
+    } catch (e) {
+        sendSse(res, 'error', { message: 'Failed to load initial stats' });
+    }
+
+    req.on('close', () => {
+        sseClients.delete(res);
+        stopStatsBroadcast();
+    });
 });
 
 // --- Settings ---

@@ -3,6 +3,16 @@ const API_URL = '/api';
 // --- State ---
 let cameras = [];
 let isCloudflare = false; // Auto-detected if behind Cloudflare Tunnel
+let statsEventSource = null;
+let fallbackStatsTimer = null;
+let fallbackThumbnailTimer = null;
+let sseConnectTimer = null;
+let statsRequestInFlight = false;
+const thumbnailVersions = new Map();
+const FRESH_STATS_VISIBLE_MS = 5000;
+const FRESH_STATS_HIDDEN_MS = 60000;
+const FRESH_THUMBS_VISIBLE_MS = 60000;
+const FRESH_THUMBS_HIDDEN_MS = 300000;
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -10,10 +20,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         detectCloudflare(); // Check if behind Cloudflare Tunnel
         fetchCameras();
         fetchSystemStats();
-        // Refresh system stats every 5 seconds
-        setInterval(fetchSystemStats, 5000);
-        // Refresh thumbnails every 30 seconds
-        setInterval(refreshThumbnails, 30000);
+        setupRealtimeUpdates();
+        document.addEventListener('visibilitychange', scheduleFallbackRefreshes);
+        window.addEventListener('focus', scheduleFallbackRefreshes);
+        window.addEventListener('blur', scheduleFallbackRefreshes);
     }
 });
 
@@ -33,13 +43,38 @@ async function detectCloudflare() {
     }
 }
 
-// Refresh all camera thumbnails without re-rendering the grid
-function refreshThumbnails() {
-    const thumbnails = document.querySelectorAll('#cameraGrid img[src*="/thumbnail"]');
-    thumbnails.forEach(img => {
-        const baseUrl = img.src.split('?')[0];
-        img.src = `${baseUrl}?t=${Date.now()}`;
-    });
+function getThumbnailVersion(cam) {
+    return cam.thumbnail_version || cam.thumbnailVersion || 0;
+}
+
+function getThumbnailUrl(cam) {
+    const version = getThumbnailVersion(cam);
+    return `${API_URL}/cameras/${cam.id}/thumbnail?v=${version}`;
+}
+
+function updateThumbnailImage(camId, version) {
+    const img = document.querySelector(`#cameraGrid img[data-camera-id="${camId}"]`);
+    if (!img) return;
+
+    const nextVersion = String(version || Date.now());
+    thumbnailVersions.set(camId, nextVersion);
+    if (img.dataset.thumbnailVersion === nextVersion) return;
+
+    const baseUrl = img.dataset.thumbnailBase || img.src.split('?')[0];
+    img.dataset.thumbnailBase = baseUrl;
+    img.dataset.thumbnailVersion = nextVersion;
+    img.src = `${baseUrl}?v=${nextVersion}`;
+}
+
+async function refreshThumbnailVersions() {
+    try {
+        const res = await fetch(`${API_URL}/cameras/thumbnail-versions`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const versions = await res.json();
+        versions.forEach(item => updateThumbnailImage(item.id, item.thumbnail_version));
+    } catch (e) {
+        console.error('Failed to refresh thumbnail versions', e);
+    }
 }
 
 // --- Auth ---
@@ -67,7 +102,7 @@ async function logout() {
 // --- API Calls ---
 async function fetchCameras() {
     try {
-        const res = await fetch(`${API_URL}/cameras`);
+        const res = await fetch(`${API_URL}/cameras`, { cache: 'no-store' });
         cameras = await res.json();
         renderCameras();
     } catch (e) {
@@ -84,48 +119,148 @@ function formatBytes(kb) {
 }
 
 async function fetchSystemStats() {
+    if (statsRequestInFlight) return;
+    statsRequestInFlight = true;
     try {
-        const res = await fetch(`${API_URL}/system/stats`);
+        const res = await fetch(`${API_URL}/system/stats`, { cache: 'no-store' });
         const data = await res.json();
-        
-        // Storage
-        const storageEl = document.getElementById('statStorage');
-        const storageBar = document.getElementById('statStorageBar');
-        const storageCard = storageEl.closest('.glass-card');
-        
-        if (data.storage.warning) {
-            storageEl.innerHTML = `${data.storage.used} / ${data.storage.limit} GB <i class="fa-solid fa-triangle-exclamation text-yellow-400 ml-1" title="Limit exceeds available disk space (${data.storage.available} GB free)"></i>`;
-            storageBar.classList.remove('bg-purple-500');
-            storageBar.classList.add('bg-yellow-500');
-        } else {
-            storageEl.textContent = `${data.storage.used} / ${data.storage.limit} GB`;
-            storageBar.classList.remove('bg-yellow-500');
-            storageBar.classList.add('bg-purple-500');
-        }
-        storageBar.style.width = `${data.storage.percent}%`;
-        const storagePathEl = document.getElementById('statStoragePath');
-        if (storagePathEl) storagePathEl.textContent = data.storagePath || '';
-        const storageModeEl = document.getElementById('statStorageMode');
-        if (storageModeEl) {
-            storageModeEl.classList.toggle('hidden', !data.storageFallback);
-        }
-        
-        // CPU
-        document.getElementById('statCpu').textContent = `${data.cpu.percent}%`;
-        document.getElementById('statCpuBar').style.width = `${data.cpu.percent}%`;
-        
-        // Memory
-        document.getElementById('statMemory').textContent = `${data.memory.used} / ${data.memory.total} GB`;
-        document.getElementById('statMemoryBar').style.width = `${data.memory.percent}%`;
-        
-        // Network
-        document.getElementById('statNetwork').innerHTML = `
-            <span class="text-green-400"><i class="fa-solid fa-arrow-down text-[10px]"></i> ${formatBytes(data.network.rxRate)}</span>
-            <span class="text-red-400"><i class="fa-solid fa-arrow-up text-[10px]"></i> ${formatBytes(data.network.txRate)}</span>
-        `;
+        applySystemStats(data);
     } catch (e) {
         console.error("Failed to fetch system stats", e);
+    } finally {
+        statsRequestInFlight = false;
     }
+}
+
+function applySystemStats(data) {
+    // Storage
+    const storageEl = document.getElementById('statStorage');
+    const storageBar = document.getElementById('statStorageBar');
+
+    if (data.storage.warning) {
+        storageEl.innerHTML = `${data.storage.used} / ${data.storage.limit} GB <i class="fa-solid fa-triangle-exclamation text-yellow-400 ml-1" title="Limit exceeds available disk space (${data.storage.available} GB free)"></i>`;
+        storageBar.classList.remove('bg-purple-500');
+        storageBar.classList.add('bg-yellow-500');
+    } else {
+        storageEl.textContent = `${data.storage.used} / ${data.storage.limit} GB`;
+        storageBar.classList.remove('bg-yellow-500');
+        storageBar.classList.add('bg-purple-500');
+    }
+    storageBar.style.width = `${data.storage.percent}%`;
+    const storagePathEl = document.getElementById('statStoragePath');
+    if (storagePathEl) storagePathEl.textContent = data.storagePath || '';
+    const storageModeEl = document.getElementById('statStorageMode');
+    if (storageModeEl) {
+        storageModeEl.classList.toggle('hidden', !data.storageFallback);
+    }
+
+    document.getElementById('statCpu').textContent = `${data.cpu.percent}%`;
+    document.getElementById('statCpuBar').style.width = `${data.cpu.percent}%`;
+
+    document.getElementById('statMemory').textContent = `${data.memory.used} / ${data.memory.total} GB`;
+    document.getElementById('statMemoryBar').style.width = `${data.memory.percent}%`;
+
+    document.getElementById('statNetwork').innerHTML = `
+        <span class="text-green-400"><i class="fa-solid fa-arrow-down text-[10px]"></i> ${formatBytes(data.network.rxRate)}</span>
+        <span class="text-red-400"><i class="fa-solid fa-arrow-up text-[10px]"></i> ${formatBytes(data.network.txRate)}</span>
+    `;
+}
+
+function setupRealtimeUpdates() {
+    if (window.EventSource) {
+        try {
+            statsEventSource = new EventSource(`${API_URL}/events`);
+            sseConnectTimer = setTimeout(() => {
+                if (statsEventSource && statsEventSource.readyState !== EventSource.OPEN) {
+                    statsEventSource.close();
+                    statsEventSource = null;
+                    scheduleFallbackRefreshes();
+                }
+            }, 10000);
+            statsEventSource.onopen = () => {
+                if (sseConnectTimer) {
+                    clearTimeout(sseConnectTimer);
+                    sseConnectTimer = null;
+                }
+                clearFallbackTimers();
+            };
+            statsEventSource.addEventListener('stats', (event) => {
+                applySystemStats(JSON.parse(event.data));
+            });
+            statsEventSource.addEventListener('thumbnail-updated', (event) => {
+                const payload = JSON.parse(event.data);
+                updateThumbnailImage(payload.cameraId, payload.thumbnailVersion);
+            });
+            statsEventSource.onerror = () => {
+                if (statsEventSource && statsEventSource.readyState === EventSource.CLOSED) {
+                    if (sseConnectTimer) {
+                        clearTimeout(sseConnectTimer);
+                        sseConnectTimer = null;
+                    }
+                    statsEventSource.close();
+                    statsEventSource = null;
+                    scheduleFallbackRefreshes();
+                }
+            };
+            return;
+        } catch (e) {
+            console.error('Failed to connect SSE', e);
+        }
+    }
+
+    scheduleFallbackRefreshes();
+}
+
+function clearFallbackTimers() {
+    if (sseConnectTimer) {
+        clearTimeout(sseConnectTimer);
+        sseConnectTimer = null;
+    }
+    if (fallbackStatsTimer) {
+        clearTimeout(fallbackStatsTimer);
+        fallbackStatsTimer = null;
+    }
+    if (fallbackThumbnailTimer) {
+        clearTimeout(fallbackThumbnailTimer);
+        fallbackThumbnailTimer = null;
+    }
+}
+
+function scheduleFallbackStats() {
+    if (statsEventSource) return;
+
+    if (fallbackStatsTimer) {
+        clearTimeout(fallbackStatsTimer);
+        fallbackStatsTimer = null;
+    }
+
+    const delay = document.visibilityState !== 'hidden' ? FRESH_STATS_VISIBLE_MS : FRESH_STATS_HIDDEN_MS;
+    fallbackStatsTimer = setTimeout(async () => {
+        await fetchSystemStats();
+        scheduleFallbackStats();
+    }, delay);
+}
+
+function scheduleFallbackThumbnails() {
+    if (statsEventSource) return;
+
+    if (fallbackThumbnailTimer) {
+        clearTimeout(fallbackThumbnailTimer);
+        fallbackThumbnailTimer = null;
+    }
+
+    const delay = document.visibilityState !== 'hidden' ? FRESH_THUMBS_VISIBLE_MS : FRESH_THUMBS_HIDDEN_MS;
+    fallbackThumbnailTimer = setTimeout(async () => {
+        await refreshThumbnailVersions();
+        scheduleFallbackThumbnails();
+    }, delay);
+}
+
+function scheduleFallbackRefreshes() {
+    if (statsEventSource) return;
+
+    scheduleFallbackStats();
+    scheduleFallbackThumbnails();
 }
 
 async function fetchSettings() {
@@ -201,7 +336,10 @@ function renderCameras() {
 
             <!-- Thumbnail / Preview -->
             <div class="aspect-video bg-gray-900/50 rounded-xl mb-4 flex items-center justify-center relative overflow-hidden group-hover:scale-[1.02] transition-transform duration-500">
-                <img src="${API_URL}/cameras/${cam.id}/thumbnail?t=${Date.now()}" 
+                <img src="${getThumbnailUrl(cam)}" 
+                     data-camera-id="${cam.id}"
+                     data-thumbnail-version="${getThumbnailVersion(cam)}"
+                     data-thumbnail-base="${API_URL}/cameras/${cam.id}/thumbnail"
                      class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                      onerror="this.onerror=null; this.src='https://placehold.co/600x400/1f2937/4b5563?text=No+Signal';">
                 
