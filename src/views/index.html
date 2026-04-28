@@ -428,7 +428,18 @@
     <div id="filesModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300">
         <div class="bg-gray-800/90 border border-gray-700 w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl transform scale-95 transition-all duration-300 modal-content flex flex-col">
             <div class="p-6 border-b border-gray-700 flex justify-between items-center bg-gray-800/50">
-                <h2 class="text-xl font-bold" id="filesModalTitle">Recordings</h2>
+                <div class="min-w-0">
+                    <h2 class="text-xl font-bold truncate" id="filesModalTitle">Recordings</h2>
+                    <div class="mt-2 flex items-center gap-2 text-xs text-gray-400">
+                        <button id="recordingsPrevDateBtn" type="button" onclick="navigateRecordingDate(-1)" class="px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            <i class="fa-solid fa-chevron-left mr-1"></i> Older
+                        </button>
+                        <span id="recordingsDateLabel" class="font-semibold text-gray-200">No date selected</span>
+                        <button id="recordingsNextDateBtn" type="button" onclick="navigateRecordingDate(1)" class="px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            Newer <i class="fa-solid fa-chevron-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
                 <button onclick="closeModal('filesModal')" class="text-gray-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
             <div class="flex-1 overflow-hidden flex flex-col md:flex-row">

@@ -580,48 +580,102 @@ function getStoragePath() {
     return getActiveStoragePath().path;
 }
 
+function getRecordingDate(name) {
+    const match = /^\d{4}-\d{2}-\d{2}/.exec(name);
+    return match ? match[0] : null;
+}
+
+function listRecordingDates(recPath) {
+    const dates = new Set();
+
+    const scanDir = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isFile()) continue;
+            const file = entry.name;
+            const date = getRecordingDate(file);
+            if (date) dates.add(date);
+        }
+    };
+
+    scanDir(recPath);
+    scanDir(path.join(recPath, 'timelapse'));
+
+    return Array.from(dates).sort((a, b) => b.localeCompare(a));
+}
+
+function listRecordingsForDate(recPath, date) {
+    const results = [];
+    const collectFiles = (dir, isTimelapse = false) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isFile()) continue;
+            const file = entry.name;
+            if (!file.startsWith(`${date}_`)) continue;
+
+            const fullPath = path.join(dir, file);
+
+            const stat = fs.statSync(fullPath);
+            results.push({
+                name: isTimelapse ? `timelapse/${file}` : file,
+                sortName: file,
+                size: stat.size,
+                mtime: stat.mtime,
+                type: isTimelapse ? 'timelapse' : 'normal'
+            });
+        }
+    };
+
+    collectFiles(recPath);
+    collectFiles(path.join(recPath, 'timelapse'), true);
+
+    return results.sort((a, b) => b.sortName.localeCompare(a.sortName));
+}
+
 app.get('/api/recordings/:id', (req, res) => {
     // List recordings for a camera
     const { id } = req.params;
+    const { date } = req.query;
     const basePath = getStoragePath();
     const recPath = path.join(basePath, id);
-    let results = [];
 
     if (fs.existsSync(recPath)) {
         try {
-            // 1. Main Recordings
-            const mainFiles = fs.readdirSync(recPath).filter(f => fs.statSync(path.join(recPath, f)).isFile()).map(f => {
-                const stat = fs.statSync(path.join(recPath, f));
-                return {
-                    name: f,
-                    size: stat.size,
-                    mtime: stat.mtime,
-                    type: 'normal'
-                };
-            });
-            results = results.concat(mainFiles);
-
-            // 2. Timelapse Recordings
-            const timelapsePath = path.join(recPath, 'timelapse');
-            if (fs.existsSync(timelapsePath)) {
-                const tlFiles = fs.readdirSync(timelapsePath).map(f => {
-                    const stat = fs.statSync(path.join(timelapsePath, f));
-                    return {
-                        name: `timelapse/${f}`, // Relative path for frontend
-                        size: stat.size,
-                        mtime: stat.mtime,
-                        type: 'timelapse'
-                    };
-                });
-                results = results.concat(tlFiles);
+            if (date) {
+                res.json(listRecordingsForDate(recPath, String(date)));
+                return;
             }
 
-            res.json(results);
+            const dates = listRecordingDates(recPath);
+            const latestDate = dates[0] || null;
+            if (!latestDate) {
+                res.json([]);
+                return;
+            }
+            res.json(listRecordingsForDate(recPath, latestDate));
         } catch(e) {
-             console.error("Error listing recordings:", e);
-             res.json([]);
+              console.error("Error listing recordings:", e);
+              res.json([]);
         }
     } else {
+        res.json([]);
+    }
+});
+
+app.get('/api/recordings/:id/dates', (req, res) => {
+    const { id } = req.params;
+    const basePath = getStoragePath();
+    const recPath = path.join(basePath, id);
+
+    if (!fs.existsSync(recPath)) {
+        res.json([]);
+        return;
+    }
+
+    try {
+        res.json(listRecordingDates(recPath));
+    } catch (e) {
+        console.error('Error listing recording dates:', e);
         res.json([]);
     }
 });

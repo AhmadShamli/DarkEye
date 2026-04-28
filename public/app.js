@@ -16,6 +16,8 @@ const FRESH_THUMBS_HIDDEN_MS = 300000;
 let currentRecordingCamId = null;
 let currentRecordingFilename = null;
 let currentRecordingFiles = [];
+let currentRecordingDates = [];
+let currentRecordingDate = null;
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -946,47 +948,104 @@ async function openRecordings(camId, camName) {
     currentRecordingCamId = camId;
     currentRecordingFilename = null;
     currentRecordingFiles = [];
+    currentRecordingDates = [];
+    currentRecordingDate = null;
     list.innerHTML = '<div class="p-4 text-center text-gray-500">Loading...</div>';
+    updateRecordingDateControls();
     openModal('filesModal');
     
     try {
-        const res = await fetch(`${API_URL}/recordings/${camId}`);
-        const files = await res.json();
-        
-        if (files.length === 0) {
+        const datesRes = await fetch(`${API_URL}/recordings/${camId}/dates`);
+        currentRecordingDates = await datesRes.json();
+
+        if (!currentRecordingDates.length) {
             list.innerHTML = '<div class="p-4 text-center text-gray-500">No recordings found.</div>';
+            updateRecordingDateControls();
             return;
         }
-        
-        // Sort by date desc
-        files.sort((a,b) => new Date(b.mtime) - new Date(a.mtime));
-        currentRecordingFiles = files;
 
-        list.innerHTML = files.map(f => {
-            const isSelected = currentRecordingCamId === camId && currentRecordingFilename === f.name;
-            const rowClasses = isSelected
-                ? 'p-3 border-b border-purple-500/40 bg-purple-500/10 cursor-pointer transition-colors group flex items-center justify-between gap-3 ring-1 ring-inset ring-purple-500/30'
-                : 'p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group flex items-center justify-between gap-3';
-
-            return `
-            <div class="${rowClasses}" onclick='playVideo(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
-                <div class="min-w-0 flex-1">
-                    <div class="text-sm font-semibold ${isSelected ? 'text-purple-200' : 'text-gray-200 group-hover:text-purple-400'} transition-colors truncate">${f.name}</div>
-                    <div class="text-xs text-gray-500 flex justify-between mt-1 gap-3">
-                        <span>${(f.size / 1024 / 1024).toFixed(1)} MB</span>
-                        <span>${new Date(f.mtime).toLocaleString()}</span>
-                    </div>
-                </div>
-                <button type="button" class="shrink-0 p-2 rounded-lg bg-gray-700/60 text-gray-300 hover:bg-purple-600 hover:text-white transition-colors" title="Download" onclick='event.stopPropagation(); downloadRecording(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
-                    <i class="fa-solid fa-download"></i>
-                </button>
-            </div>
-        `;
-        }).join('');
+        await loadRecordingDate(camId, currentRecordingDates[0]);
         
     } catch (e) {
         list.innerHTML = '<div class="p-4 text-center text-red-400">Error loading files.</div>';
     }
+}
+
+function updateRecordingDateControls() {
+    const prevBtn = document.getElementById('recordingsPrevDateBtn');
+    const nextBtn = document.getElementById('recordingsNextDateBtn');
+    const label = document.getElementById('recordingsDateLabel');
+
+    const hasDates = currentRecordingDates.length > 0;
+    const index = hasDates ? currentRecordingDates.indexOf(currentRecordingDate) : -1;
+    const canGoOlder = hasDates && index >= 0 && index < currentRecordingDates.length - 1;
+    const canGoNewer = hasDates && index > 0;
+
+    if (prevBtn) prevBtn.disabled = !canGoOlder;
+    if (nextBtn) nextBtn.disabled = !canGoNewer;
+    if (label) {
+        label.textContent = currentRecordingDate || 'No date selected';
+    }
+}
+
+function renderRecordingFiles(files, camId) {
+    const list = document.getElementById('fileList');
+    currentRecordingFiles = files;
+
+    if (!files.length) {
+        list.innerHTML = '<div class="p-4 text-center text-gray-500">No recordings for this date.</div>';
+        updateRecordingDateControls();
+        return;
+    }
+
+    list.innerHTML = files.map(f => {
+        const isSelected = currentRecordingCamId === camId && currentRecordingFilename === f.name;
+        const rowClasses = isSelected
+            ? 'p-3 border-b border-purple-500/40 bg-purple-500/10 cursor-pointer transition-colors group flex items-center justify-between gap-3 ring-1 ring-inset ring-purple-500/30'
+            : 'p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group flex items-center justify-between gap-3';
+
+        return `
+        <div class="${rowClasses}" onclick='playVideo(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
+            <div class="min-w-0 flex-1">
+                <div class="text-sm font-semibold ${isSelected ? 'text-purple-200' : 'text-gray-200 group-hover:text-purple-400'} transition-colors truncate">${f.name}</div>
+                <div class="text-xs text-gray-500 flex justify-between mt-1 gap-3">
+                    <span>${(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                    <span>${new Date(f.mtime).toLocaleString()}</span>
+                </div>
+            </div>
+            <button type="button" class="shrink-0 p-2 rounded-lg bg-gray-700/60 text-gray-300 hover:bg-purple-600 hover:text-white transition-colors" title="Download" onclick='event.stopPropagation(); downloadRecording(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
+                <i class="fa-solid fa-download"></i>
+            </button>
+        </div>
+    `;
+    }).join('');
+
+    updateRecordingDateControls();
+}
+
+async function loadRecordingDate(camId, date) {
+    const list = document.getElementById('fileList');
+    currentRecordingDate = date;
+    updateRecordingDateControls();
+    list.innerHTML = '<div class="p-4 text-center text-gray-500">Loading...</div>';
+
+    const res = await fetch(`${API_URL}/recordings/${camId}?date=${encodeURIComponent(date)}`);
+    const files = await res.json();
+    currentRecordingFilename = null;
+    renderRecordingFiles(files, camId);
+}
+
+function navigateRecordingDate(direction) {
+    if (!currentRecordingDates.length || !currentRecordingDate) return;
+    const index = currentRecordingDates.indexOf(currentRecordingDate);
+    if (index === -1) return;
+
+    const nextIndex = direction < 0 ? index + 1 : index - 1;
+    if (nextIndex < 0 || nextIndex >= currentRecordingDates.length) return;
+
+    loadRecordingDate(currentRecordingCamId, currentRecordingDates[nextIndex]).catch(() => {
+        document.getElementById('fileList').innerHTML = '<div class="p-4 text-center text-red-400">Error loading files.</div>';
+    });
 }
 
 function getRecordingUrl(camId, filename) {
@@ -1004,30 +1063,7 @@ function playVideo(camId, filename) {
     player.src = getRecordingUrl(camId, filename);
     player.play();
 
-    const list = document.getElementById('fileList');
-    if (currentRecordingFiles.length) {
-        list.innerHTML = currentRecordingFiles.map(f => {
-            const isSelected = currentRecordingCamId === camId && currentRecordingFilename === f.name;
-            const rowClasses = isSelected
-                ? 'p-3 border-b border-purple-500/40 bg-purple-500/10 cursor-pointer transition-colors group flex items-center justify-between gap-3 ring-1 ring-inset ring-purple-500/30'
-                : 'p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group flex items-center justify-between gap-3';
-
-            return `
-            <div class="${rowClasses}" onclick='playVideo(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
-                <div class="min-w-0 flex-1">
-                    <div class="text-sm font-semibold ${isSelected ? 'text-purple-200' : 'text-gray-200 group-hover:text-purple-400'} transition-colors truncate">${f.name}</div>
-                    <div class="text-xs text-gray-500 flex justify-between mt-1 gap-3">
-                        <span>${(f.size / 1024 / 1024).toFixed(1)} MB</span>
-                        <span>${new Date(f.mtime).toLocaleString()}</span>
-                    </div>
-                </div>
-                <button type="button" class="shrink-0 p-2 rounded-lg bg-gray-700/60 text-gray-300 hover:bg-purple-600 hover:text-white transition-colors" title="Download" onclick='event.stopPropagation(); downloadRecording(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
-                    <i class="fa-solid fa-download"></i>
-                </button>
-            </div>
-        `;
-        }).join('');
-    }
+    renderRecordingFiles(currentRecordingFiles, camId);
 }
 
 function downloadRecording(camId, filename) {
