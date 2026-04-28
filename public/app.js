@@ -952,12 +952,17 @@ async function openRecordings(camId, camName) {
         files.sort((a,b) => new Date(b.mtime) - new Date(a.mtime));
 
         list.innerHTML = files.map(f => `
-            <div class="p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group" onclick="playVideo('${camId}', '${f.name}')">
-                <div class="text-sm font-semibold text-gray-200 group-hover:text-purple-400 transition-colors">${f.name}</div>
-                <div class="text-xs text-gray-500 flex justify-between mt-1">
-                    <span>${(f.size / 1024 / 1024).toFixed(1)} MB</span>
-                    <span>${new Date(f.mtime).toLocaleString()}</span>
+            <div class="p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group flex items-center justify-between gap-3" onclick='playVideo(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm font-semibold text-gray-200 group-hover:text-purple-400 transition-colors truncate">${f.name}</div>
+                    <div class="text-xs text-gray-500 flex justify-between mt-1 gap-3">
+                        <span>${(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                        <span>${new Date(f.mtime).toLocaleString()}</span>
+                    </div>
                 </div>
+                <button type="button" class="shrink-0 p-2 rounded-lg bg-gray-700/60 text-gray-300 hover:bg-purple-600 hover:text-white transition-colors" title="Download" onclick='event.stopPropagation(); downloadRecording(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
+                    <i class="fa-solid fa-download"></i>
+                </button>
             </div>
         `).join('');
         
@@ -966,10 +971,27 @@ async function openRecordings(camId, camName) {
     }
 }
 
+function getRecordingUrl(camId, filename) {
+    const encodedPath = String(filename)
+        .split('/')
+        .map(segment => encodeURIComponent(segment))
+        .join('/');
+    return `/recordings/${encodeURIComponent(camId)}/${encodedPath}`;
+}
+
 function playVideo(camId, filename) {
     const player = document.getElementById('videoPlayer');
-    player.src = `/recordings/${camId}/${filename}`;
+    player.src = getRecordingUrl(camId, filename);
     player.play();
+}
+
+function downloadRecording(camId, filename) {
+    const link = document.createElement('a');
+    link.href = getRecordingUrl(camId, filename);
+    link.download = filename.split('/').pop();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
 }
 
 // --- PTZ ---
