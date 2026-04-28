@@ -18,6 +18,7 @@ let currentRecordingFilename = null;
 let currentRecordingFiles = [];
 let currentRecordingDates = [];
 let currentRecordingDate = null;
+let currentRecordingLoadToken = 0;
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -945,6 +946,7 @@ function togglePasswordVisibility() {
 async function openRecordings(camId, camName) {
     document.getElementById('filesModalTitle').innerText = `Recordings: ${camName}`;
     const list = document.getElementById('fileList');
+    const token = ++currentRecordingLoadToken;
     currentRecordingCamId = camId;
     currentRecordingFilename = null;
     currentRecordingFiles = [];
@@ -953,20 +955,24 @@ async function openRecordings(camId, camName) {
     list.innerHTML = '<div class="p-4 text-center text-gray-500">Loading...</div>';
     updateRecordingDateControls();
     openModal('filesModal');
+    await new Promise(requestAnimationFrame);
     
     try {
         const datesRes = await fetch(`${API_URL}/recordings/${camId}/dates`);
+        if (token !== currentRecordingLoadToken) return;
         currentRecordingDates = await datesRes.json();
 
         if (!currentRecordingDates.length) {
+            if (token !== currentRecordingLoadToken) return;
             list.innerHTML = '<div class="p-4 text-center text-gray-500">No recordings found.</div>';
             updateRecordingDateControls();
             return;
         }
 
-        await loadRecordingDate(camId, currentRecordingDates[0]);
+        await loadRecordingDate(camId, currentRecordingDates[0], token);
         
     } catch (e) {
+        if (token !== currentRecordingLoadToken) return;
         list.innerHTML = '<div class="p-4 text-center text-red-400">Error loading files.</div>';
     }
 }
@@ -1023,14 +1029,16 @@ function renderRecordingFiles(files, camId) {
     updateRecordingDateControls();
 }
 
-async function loadRecordingDate(camId, date) {
+async function loadRecordingDate(camId, date, token = currentRecordingLoadToken) {
     const list = document.getElementById('fileList');
     currentRecordingDate = date;
     updateRecordingDateControls();
     list.innerHTML = '<div class="p-4 text-center text-gray-500">Loading...</div>';
 
     const res = await fetch(`${API_URL}/recordings/${camId}?date=${encodeURIComponent(date)}`);
+    if (token !== currentRecordingLoadToken) return;
     const files = await res.json();
+    if (token !== currentRecordingLoadToken) return;
     currentRecordingFilename = null;
     renderRecordingFiles(files, camId);
 }
