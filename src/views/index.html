@@ -373,6 +373,13 @@
                         <div class="text-[11px] text-gray-400 truncate" id="settingsCurrentStoragePath">Current: --</div>
                         <div id="settingsStorageFallback" class="hidden text-[11px] text-yellow-300">Using temporary memory storage.</div>
                     </div>
+                    <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-700 bg-gray-900/40 cursor-pointer select-none">
+                        <input type="checkbox" name="storage_mount_retry" id="set_storage_mount_retry" class="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500">
+                        <span>
+                            <span class="block text-sm font-medium text-gray-200">Mounted folder</span>
+                            <span class="block text-[11px] text-gray-400">Retry the storage path every few seconds and fall back if the mount disappears.</span>
+                        </span>
+                    </label>
                     <div class="space-y-1">
                         <label class="text-xs uppercase tracking-wider text-gray-400 font-semibold">Max Storage (GB)</label>
                         <input type="number" name="max_storage_gb" id="set_max_storage" class="input-field">

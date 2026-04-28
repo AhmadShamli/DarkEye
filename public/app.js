@@ -273,6 +273,8 @@ async function fetchSettings() {
     document.getElementById('set_max_storage').value = data.max_storage_gb;
     document.getElementById('set_retention').value = data.retention_hours;
     document.getElementById('set_cleanup').value = data.cleanup_interval_min;
+    const mountRetryEl = document.getElementById('set_storage_mount_retry');
+    if (mountRetryEl) mountRetryEl.checked = data.storage_mount_retry === '1' || data.storage_mount_retry === 1 || data.storage_mount_retry === true;
     const setCurrentText = (id, value, fallback = '--') => {
         const el = document.getElementById(id);
         if (el) el.textContent = `Current: ${value !== undefined && value !== null && value !== '' ? value : fallback}`;
@@ -648,6 +650,8 @@ async function handleSaveSettings(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
+    const mountRetryEl = document.getElementById('set_storage_mount_retry');
+    data.storage_mount_retry = mountRetryEl && mountRetryEl.checked ? '1' : '0';
     
     try {
         await fetch(`${API_URL}/settings`, {

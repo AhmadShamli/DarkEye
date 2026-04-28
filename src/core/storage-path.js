@@ -28,9 +28,54 @@ function isWritableDir(dir) {
     }
 }
 
+function getBooleanSetting(key, fallback = false) {
+    try {
+        const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+        if (!row || row.value === undefined || row.value === null) return fallback;
+        return ['1', 'true', 'yes', 'on'].includes(String(row.value).toLowerCase());
+    } catch (e) {
+        return fallback;
+    }
+}
+
+function getNumericSetting(key, fallback = 0) {
+    try {
+        const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+        const parsed = parseFloat(row?.value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+function getFilesystemCapacityBytes(targetPath) {
+    try {
+        if (typeof fs.statfsSync !== 'function') return null;
+        const stat = fs.statfsSync(targetPath);
+        const totalBytes = Math.max(0, Math.floor(Number(stat.blocks) * Number(stat.bsize)));
+        const availableBytes = Math.max(0, Math.floor(Number(stat.bavail) * Number(stat.bsize)));
+        return { totalBytes, availableBytes };
+    } catch (e) {
+        return null;
+    }
+}
+
 function getActiveStoragePath() {
     const configured = getConfiguredStoragePath();
-    if (isWritableDir(configured)) {
+    const mountRetryEnabled = getBooleanSetting('storage_mount_retry', false);
+    if (!mountRetryEnabled && isWritableDir(configured)) {
+        return { path: configured, isFallback: false, reason: null };
+    }
+
+    const maxStorageGB = getNumericSetting('max_storage_gb', 0);
+    const requiredBytes = maxStorageGB > 0 ? Math.floor(maxStorageGB * 1024 * 1024 * 1024) : 0;
+
+    if (mountRetryEnabled) {
+        const diskInfo = getFilesystemCapacityBytes(configured);
+        if (diskInfo && (!requiredBytes || diskInfo.totalBytes >= requiredBytes) && isWritableDir(configured)) {
+            return { path: configured, isFallback: false, reason: null };
+        }
+    } else if (isWritableDir(configured)) {
         return { path: configured, isFallback: false, reason: null };
     }
 
@@ -41,7 +86,9 @@ function getActiveStoragePath() {
     return {
         path: tempPath,
         isFallback: true,
-        reason: `Configured storage unavailable; using temporary memory storage at ${tempPath}`
+        reason: mountRetryEnabled
+            ? `Mounted storage unavailable or below configured size; using temporary memory storage at ${tempPath}`
+            : `Configured storage unavailable; using temporary memory storage at ${tempPath}`
     };
 }
 
@@ -98,6 +145,9 @@ module.exports = {
     getConfiguredStoragePath,
     getActiveStoragePath,
     getTemporaryStorageLimitBytes,
+    getBooleanSetting,
+    getNumericSetting,
+    getFilesystemCapacityBytes,
     getStorageDiskInfo,
     getAdaptiveStorageLimitBytes,
     getTempRootPath,

@@ -534,11 +534,12 @@ app.get('/api/settings', (req, res) => {
     result.retention_hours = result.retention_hours || '72';
     result.cleanup_interval_min = result.cleanup_interval_min || '60';
     result.storage_path = result.storage_path || path.join(process.cwd(), 'recordings');
+    result.storage_mount_retry = result.storage_mount_retry || '0';
     res.json(result);
 });
 
 app.post('/api/settings', (req, res) => {
-    const { max_storage_gb, retention_hours, cleanup_interval_min, storage_path } = req.body;
+    const { max_storage_gb, retention_hours, cleanup_interval_min, storage_path, storage_mount_retry } = req.body;
     if (max_storage_gb !== undefined && max_storage_gb !== null) {
         db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('max_storage_gb', max_storage_gb.toString());
     }
@@ -553,6 +554,10 @@ app.post('/api/settings', (req, res) => {
         if (cleanStoragePath) {
             db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('storage_path', cleanStoragePath);
         }
+    }
+    if (storage_mount_retry !== undefined && storage_mount_retry !== null) {
+        const retryValue = ['1', 'true', 'on', 'yes'].includes(storage_mount_retry.toString().toLowerCase()) ? '1' : '0';
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('storage_mount_retry', retryValue);
     }
     storageManager.stop();
     storageManager.start();
@@ -777,10 +782,10 @@ app.post('/api/cameras/:id/talk/audio', express.raw({ type: 'application/octet-s
         await mediamtx.init();
         mediamtx.start();
         
+        storageManager.start();
         await cameraManager.init();
         const thumbnailManager = require('./core/thumbnail-manager');
         thumbnailManager.start();
-        storageManager.start();
 
         app.listen(PORT, () => {
             console.log(`Server running on http://localhost:${PORT}`);

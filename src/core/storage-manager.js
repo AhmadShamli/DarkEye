@@ -1,12 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../db');
-const { getActiveStoragePath, getTemporaryStorageLimitBytes, getTempRootPath, getStorageDiskInfo, getAdaptiveStorageLimitBytes } = require('./storage-path');
+const { getActiveStoragePath, getTemporaryStorageLimitBytes, getTempRootPath, getStorageDiskInfo, getAdaptiveStorageLimitBytes, getBooleanSetting } = require('./storage-path');
 
 class StorageManager {
     constructor() {
         this.baseDir = path.join(process.cwd(), 'recordings');
         this.interval = null;
+        this.mountCheckInterval = null;
         this.tempLimitBytes = 0;
         this.lastStorageCapacityBytes = null;
     }
@@ -32,12 +33,64 @@ class StorageManager {
         
         // Run immediately then schedule
         this.cleanup();
-        
+
         this.interval = setInterval(() => this.cleanup(), intervalMin * 60 * 1000);
+
+        if (getBooleanSetting('storage_mount_retry', false)) {
+            if (this.mountCheckInterval) clearInterval(this.mountCheckInterval);
+            this.mountCheckInterval = setInterval(() => this.syncManagedStorage(), 5000);
+            this.syncManagedStorage();
+        }
     }
     
     stop() {
         clearInterval(this.interval);
+        clearInterval(this.mountCheckInterval);
+        this.interval = null;
+        this.mountCheckInterval = null;
+    }
+
+    restartRecordersOnly() {
+        try {
+            const cameraManager = require('./camera-manager');
+            const cameras = db.prepare('SELECT * FROM cameras WHERE record_enabled = 1').all();
+            for (const cam of cameras) {
+                cameraManager.stopCamera(cam.id, true);
+                cameraManager.startCamera(cam, true);
+            }
+        } catch (e) {
+            console.error('[Storage] Failed to restart recorders after storage change:', e.message);
+        }
+    }
+
+    syncManagedStorage() {
+        if (!getBooleanSetting('storage_mount_retry', false)) return;
+
+        const storage = getActiveStoragePath();
+        const changedPath = storage.path !== this.baseDir;
+        const changedMode = storage.isFallback !== this.isFallback;
+
+        if (!changedPath && !changedMode) return;
+
+        const wasFallback = this.isFallback;
+        this.baseDir = storage.path;
+        this.isFallback = storage.isFallback;
+
+        if (this.isFallback) {
+            if (!this.tempLimitBytes) {
+                this.tempLimitBytes = getTemporaryStorageLimitBytes();
+            }
+            console.warn(`[Storage] Mounted storage lost. Switching to temporary storage at ${this.baseDir}`);
+            this.restartRecordersOnly();
+            return;
+        }
+
+        this.tempLimitBytes = 0;
+        if (wasFallback) {
+            console.log(`[Storage] Mounted storage recovered. Switching back to ${this.baseDir}`);
+            this.migrateTempStorage(this.baseDir);
+            this.restartRecordersOnly();
+        }
     }
 
     async cleanup() {
