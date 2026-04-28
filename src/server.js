@@ -10,7 +10,7 @@ const storageManager = require('./core/storage-manager');
 const onvifManager = require('./core/onvif');
 const audioManager = require('./core/audio-manager');
 const { v4: uuidv4 } = require('uuid');
-const { getActiveStoragePath } = require('./core/storage-path');
+const { getActiveStoragePath, getStorageDiskInfo, getAdaptiveStorageLimitBytes } = require('./core/storage-path');
 const realtimeBus = require('./core/realtime-bus');
 
 const app = express();
@@ -366,7 +366,16 @@ async function collectSystemStats(force = false) {
         }
 
         const storageLimitRow = db.prepare("SELECT value FROM settings WHERE key = 'max_storage_gb'").get();
-        const storageLimit = storageLimitRow ? parseFloat(storageLimitRow.value) : 100;
+        const storageLimitConfigured = storageLimitRow ? parseFloat(storageLimitRow.value) : 100;
+        const configuredLimitBytes = storageLimitConfigured > 0 ? storageLimitConfigured * 1024 * 1024 * 1024 : 0;
+        const diskInfo = await getStorageDiskInfo(basePath);
+        const fallbackLimitBytes = storageManager.tempLimitBytes || 0;
+        const effectiveLimitBytes = activeStorage.isFallback
+            ? fallbackLimitBytes
+            : getAdaptiveStorageLimitBytes(configuredLimitBytes, diskInfo);
+        const storageLimit = effectiveLimitBytes > 0
+            ? Math.round(effectiveLimitBytes / (1024 * 1024 * 1024) * 100) / 100
+            : storageLimitConfigured;
 
         const cpuLoad = await si.currentLoad();
         const cpuPercent = Math.round(cpuLoad.currentLoad);
@@ -407,31 +416,8 @@ async function collectSystemStats(force = false) {
             console.error('Network stats error:', e.message);
         }
 
-        let diskAvailable = 0;
-        let diskWarning = false;
-        try {
-            const disks = await si.fsSize();
-            const normalizedPath = path.resolve(basePath).toLowerCase();
-            let matchedDisk = null;
-
-            for (const disk of disks) {
-                const mount = disk.mount.toLowerCase();
-                if (normalizedPath.startsWith(mount)) {
-                    if (!matchedDisk || mount.length > matchedDisk.mount.length) {
-                        matchedDisk = disk;
-                    }
-                }
-            }
-
-            if (matchedDisk) {
-                diskAvailable = Math.round(matchedDisk.available / (1024 * 1024 * 1024) * 100) / 100;
-                if (storageLimit > diskAvailable + (storageUsed / (1024 * 1024 * 1024))) {
-                    diskWarning = true;
-                }
-            }
-        } catch (e) {
-            console.error('Disk space check error:', e.message);
-        }
+        const diskAvailable = diskInfo ? Math.round(diskInfo.availableBytes / (1024 * 1024 * 1024) * 100) / 100 : 0;
+        const diskWarning = !!(diskInfo && configuredLimitBytes && configuredLimitBytes > diskInfo.totalBytes && effectiveLimitBytes === 0);
 
         const stats = {
             storage: {
@@ -439,7 +425,8 @@ async function collectSystemStats(force = false) {
                 limit: storageLimit,
                 available: diskAvailable,
                 warning: diskWarning,
-                percent: Math.min(100, Math.round((storageUsed / (storageLimit * 1024 * 1024 * 1024)) * 100))
+                percent: storageLimit > 0 ? Math.min(100, Math.round((storageUsed / (storageLimit * 1024 * 1024 * 1024)) * 100)) : 0,
+                adaptive: !!(diskInfo && configuredLimitBytes && configuredLimitBytes > diskInfo.totalBytes)
             },
             storagePath: basePath,
             storageFallback: activeStorage.isFallback,

@@ -1,14 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const db = require('../db');
-const { getActiveStoragePath, getTemporaryStorageLimitBytes, getTempRootPath } = require('./storage-path');
+const { getActiveStoragePath, getTemporaryStorageLimitBytes, getTempRootPath, getStorageDiskInfo, getAdaptiveStorageLimitBytes } = require('./storage-path');
 
 class StorageManager {
     constructor() {
         this.baseDir = path.join(process.cwd(), 'recordings');
         this.interval = null;
         this.tempLimitBytes = 0;
+        this.lastStorageCapacityBytes = null;
     }
 
     start() {
@@ -65,6 +65,15 @@ class StorageManager {
             const retentionRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('retention_hours');
             const maxStorageGB = parseFloat(maxStorageRow?.value || '0');
             const retentionHours = parseFloat(retentionRow?.value || '0');
+            const configuredLimitBytes = maxStorageGB && maxStorageGB > 0 ? maxStorageGB * 1024 * 1024 * 1024 : 0;
+            const diskInfo = await getStorageDiskInfo(this.baseDir);
+
+            if (diskInfo?.totalBytes && this.lastStorageCapacityBytes && this.lastStorageCapacityBytes !== diskInfo.totalBytes) {
+                console.warn(`[Storage] Storage capacity changed for ${this.baseDir}: ${(this.lastStorageCapacityBytes / (1024 * 1024 * 1024)).toFixed(2)} GB -> ${(diskInfo.totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+            }
+            if (diskInfo?.totalBytes) {
+                this.lastStorageCapacityBytes = diskInfo.totalBytes;
+            }
             
             // Verify baseDir exists
             if (!fs.existsSync(this.baseDir)) return;
@@ -100,14 +109,14 @@ class StorageManager {
             }
 
             // 2. Retention by Size
-            const maxBytes = this.isFallback ? this.tempLimitBytes : (maxStorageGB && maxStorageGB > 0 ? maxStorageGB * 1024 * 1024 * 1024 : 0);
+            const maxBytes = this.isFallback ? this.tempLimitBytes : getAdaptiveStorageLimitBytes(configuredLimitBytes, diskInfo);
             if (maxBytes > 0) {
                 let totalSize = allFiles.reduce((acc, f) => acc + f.size, 0);
                 const cleanupThreshold = this.isFallback ? Math.floor(maxBytes * 0.7) : maxBytes;
                 
                 const limitLabel = this.isFallback
                     ? `${(maxBytes / (1024 * 1024 * 1024)).toFixed(2)} GB (temp)`
-                    : `${maxStorageGB} GB`;
+                    : `${(maxBytes / (1024 * 1024 * 1024)).toFixed(2)} GB${configuredLimitBytes && maxBytes < configuredLimitBytes ? ' (adaptive)' : ''}`;
                 console.log(`[Storage] Current size: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB / Limit: ${limitLabel}`);
 
                 if (totalSize > cleanupThreshold) {

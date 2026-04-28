@@ -13,6 +13,9 @@ const FRESH_STATS_VISIBLE_MS = 5000;
 const FRESH_STATS_HIDDEN_MS = 60000;
 const FRESH_THUMBS_VISIBLE_MS = 60000;
 const FRESH_THUMBS_HIDDEN_MS = 300000;
+let currentRecordingCamId = null;
+let currentRecordingFilename = null;
+let currentRecordingFiles = [];
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -936,6 +939,9 @@ function togglePasswordVisibility() {
 async function openRecordings(camId, camName) {
     document.getElementById('filesModalTitle').innerText = `Recordings: ${camName}`;
     const list = document.getElementById('fileList');
+    currentRecordingCamId = camId;
+    currentRecordingFilename = null;
+    currentRecordingFiles = [];
     list.innerHTML = '<div class="p-4 text-center text-gray-500">Loading...</div>';
     openModal('filesModal');
     
@@ -950,11 +956,18 @@ async function openRecordings(camId, camName) {
         
         // Sort by date desc
         files.sort((a,b) => new Date(b.mtime) - new Date(a.mtime));
+        currentRecordingFiles = files;
 
-        list.innerHTML = files.map(f => `
-            <div class="p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group flex items-center justify-between gap-3" onclick='playVideo(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
+        list.innerHTML = files.map(f => {
+            const isSelected = currentRecordingCamId === camId && currentRecordingFilename === f.name;
+            const rowClasses = isSelected
+                ? 'p-3 border-b border-purple-500/40 bg-purple-500/10 cursor-pointer transition-colors group flex items-center justify-between gap-3 ring-1 ring-inset ring-purple-500/30'
+                : 'p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group flex items-center justify-between gap-3';
+
+            return `
+            <div class="${rowClasses}" onclick='playVideo(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
                 <div class="min-w-0 flex-1">
-                    <div class="text-sm font-semibold text-gray-200 group-hover:text-purple-400 transition-colors truncate">${f.name}</div>
+                    <div class="text-sm font-semibold ${isSelected ? 'text-purple-200' : 'text-gray-200 group-hover:text-purple-400'} transition-colors truncate">${f.name}</div>
                     <div class="text-xs text-gray-500 flex justify-between mt-1 gap-3">
                         <span>${(f.size / 1024 / 1024).toFixed(1)} MB</span>
                         <span>${new Date(f.mtime).toLocaleString()}</span>
@@ -964,7 +977,8 @@ async function openRecordings(camId, camName) {
                     <i class="fa-solid fa-download"></i>
                 </button>
             </div>
-        `).join('');
+        `;
+        }).join('');
         
     } catch (e) {
         list.innerHTML = '<div class="p-4 text-center text-red-400">Error loading files.</div>';
@@ -981,8 +995,35 @@ function getRecordingUrl(camId, filename) {
 
 function playVideo(camId, filename) {
     const player = document.getElementById('videoPlayer');
+    currentRecordingCamId = camId;
+    currentRecordingFilename = filename;
     player.src = getRecordingUrl(camId, filename);
     player.play();
+
+    const list = document.getElementById('fileList');
+    if (currentRecordingFiles.length) {
+        list.innerHTML = currentRecordingFiles.map(f => {
+            const isSelected = currentRecordingCamId === camId && currentRecordingFilename === f.name;
+            const rowClasses = isSelected
+                ? 'p-3 border-b border-purple-500/40 bg-purple-500/10 cursor-pointer transition-colors group flex items-center justify-between gap-3 ring-1 ring-inset ring-purple-500/30'
+                : 'p-3 border-b border-gray-700 hover:bg-gray-800/80 cursor-pointer transition-colors group flex items-center justify-between gap-3';
+
+            return `
+            <div class="${rowClasses}" onclick='playVideo(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm font-semibold ${isSelected ? 'text-purple-200' : 'text-gray-200 group-hover:text-purple-400'} transition-colors truncate">${f.name}</div>
+                    <div class="text-xs text-gray-500 flex justify-between mt-1 gap-3">
+                        <span>${(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                        <span>${new Date(f.mtime).toLocaleString()}</span>
+                    </div>
+                </div>
+                <button type="button" class="shrink-0 p-2 rounded-lg bg-gray-700/60 text-gray-300 hover:bg-purple-600 hover:text-white transition-colors" title="Download" onclick='event.stopPropagation(); downloadRecording(${JSON.stringify(camId)}, ${JSON.stringify(f.name)})'>
+                    <i class="fa-solid fa-download"></i>
+                </button>
+            </div>
+        `;
+        }).join('');
+    }
 }
 
 function downloadRecording(camId, filename) {

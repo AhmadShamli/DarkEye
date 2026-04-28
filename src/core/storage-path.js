@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const si = require('systeminformation');
 const db = require('../db');
 
 const TEMP_ROOT = process.platform === 'win32'
@@ -50,6 +51,45 @@ function getTemporaryStorageLimitBytes() {
     return Math.max(0, Math.floor(Math.min(total * 0.3, free * 0.5)));
 }
 
+async function getStorageDiskInfo(targetPath) {
+    try {
+        const disks = await si.fsSize();
+        const normalizedPath = path.resolve(targetPath).toLowerCase();
+        let matchedDisk = null;
+
+        for (const disk of disks) {
+            const mount = path.resolve(disk.mount).toLowerCase();
+            if (normalizedPath.startsWith(mount)) {
+                if (!matchedDisk || mount.length > path.resolve(matchedDisk.mount).length) {
+                    matchedDisk = disk;
+                }
+            }
+        }
+
+        if (!matchedDisk) return null;
+
+        const totalBytes = Math.max(0, Math.floor(matchedDisk.size || 0));
+        const availableBytes = Math.max(0, Math.floor(matchedDisk.available || 0));
+
+        return {
+            mount: matchedDisk.mount,
+            totalBytes,
+            availableBytes,
+            usedBytes: Math.max(0, totalBytes - availableBytes)
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+function getAdaptiveStorageLimitBytes(configuredLimitBytes, diskInfo) {
+    if (!configuredLimitBytes || configuredLimitBytes <= 0) return 0;
+    if (!diskInfo?.totalBytes) return configuredLimitBytes;
+    if (diskInfo.totalBytes >= configuredLimitBytes) return configuredLimitBytes;
+
+    return Math.max(0, Math.floor(diskInfo.availableBytes * 0.5));
+}
+
 function getTempRootPath() {
     return TEMP_ROOT;
 }
@@ -58,6 +98,8 @@ module.exports = {
     getConfiguredStoragePath,
     getActiveStoragePath,
     getTemporaryStorageLimitBytes,
+    getStorageDiskInfo,
+    getAdaptiveStorageLimitBytes,
     getTempRootPath,
     isWritableDir
 };
