@@ -165,7 +165,8 @@ class StorageManager {
             const maxBytes = this.isFallback ? this.tempLimitBytes : getAdaptiveStorageLimitBytes(configuredLimitBytes, diskInfo);
             if (maxBytes > 0) {
                 let totalSize = allFiles.reduce((acc, f) => acc + f.size, 0);
-                const cleanupThreshold = this.isFallback ? Math.floor(maxBytes * 0.7) : maxBytes;
+                // Leave headroom after cleanup so the next pass does not fire immediately.
+                const cleanupThreshold = this.isFallback ? Math.floor(maxBytes * 0.7) : Math.floor(maxBytes * 0.9);
                 
                 const limitLabel = this.isFallback
                     ? `${(maxBytes / (1024 * 1024 * 1024)).toFixed(2)} GB (temp)`
